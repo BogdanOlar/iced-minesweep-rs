@@ -1,6 +1,9 @@
 use iced::{Settings, Application, window};
 use minesweep::Minesweep;
 
+#[macro_use]
+extern crate log;
+
 mod minesweep;
 mod minefield;
 

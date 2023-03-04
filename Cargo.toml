@@ -8,5 +8,6 @@ edition = "2021"
 [dependencies]
 iced = { version = "0.8", features = ["canvas", "tokio", "debug"] }
 tokio = { version = "1.26", features = ["sync"] }
+log = { version = "0.4" }
 env_logger = { version = "0.10" }
 rand = { version = "0.8.5", features = ["getrandom"] }
