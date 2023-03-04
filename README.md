@@ -1,1 +1,1 @@
-# minesweep-rs-iced
+# Iced minesweep-rs
