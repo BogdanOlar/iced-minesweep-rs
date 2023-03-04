@@ -1,0 +1,12 @@
+[package]
+name = "minesweep-rs-iced"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+iced = { version = "0.8", features = ["canvas", "tokio", "debug"] }
+tokio = { version = "1.26", features = ["sync"] }
+env_logger = { version = "0.10" }
+rand = { version = "0.8.5", features = ["getrandom"] }
