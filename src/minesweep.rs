@@ -1,4 +1,4 @@
-use iced::{Application, Theme, executor, widget::{row, column, button, text, container, canvas::{self, Cache, Path, Event, Cursor, event}, Canvas, Column, Row, Button}, Element, Alignment, theme, Length, Vector, Point, Color, Size, Rectangle};
+use iced::{Application, Theme, executor, widget::{row, column, button, text, container, canvas::{self, Cache, Path, Event, Cursor, event, Text}, Canvas, Column, Row, Button}, Element, Alignment, theme, Length, Vector, Point, Color, Size, Rectangle, alignment};
 
 use minefield_rs::Minefield;
 
@@ -25,7 +25,7 @@ impl Application for Minesweep {
     fn new(_flags: Self::Flags) -> (Self, iced::Command<Self::Message>) {
         (
             Self {
-                field: Minefield::new(10, 10),
+                field: Minefield::new(10, 5).with_mines(3),
                 field_cache: Cache::default(),
                 seconds: None,
                 flags: None,
@@ -154,7 +154,8 @@ impl canvas::Program<Message> for Minesweep {
         let field = self.field_cache.draw(bounds.size(), |frame| {
             // Set the background
             let background = Path::rectangle(Point::ORIGIN, frame.size());
-            frame.fill(&background, Color::from_rgb8(0x40, 0x44, 0x4B));
+            let background_color = Color::from_rgb8(0x40, 0x44, 0x4B);
+            frame.fill(&background, background_color.clone());
 
             // determine where to draw the spots
             let row_size = self.field.width() as f32 * Self::SPOT_SIZE + (self.field.width().saturating_sub(1) as f32 * Self::SPOT_PAD);
@@ -163,19 +164,75 @@ impl canvas::Program<Message> for Minesweep {
             let o_x = (frame.width() - row_size) / 2.0;
             let o_y = (frame.height() - col_size) / 2.0;
 
+            let foreground_color = Color::WHITE;
             // draw the spots
-            for y in 0..self.field.height() {
-                for x in 0..self.field.width() {
-                    if let Some(spot) = self.field.spot(x, y) {
-                        let x = o_x + (x as f32 * (Self::SPOT_SIZE + Self::SPOT_PAD));
-                        let y = o_y + (y as f32 * (Self::SPOT_SIZE + Self::SPOT_PAD));
+            for (coords, spot) in self.field.spots() {
+                let fx = o_x + (coords.0 as f32 * (Self::SPOT_SIZE + Self::SPOT_PAD));
+                let fy = o_y + (coords.1 as f32 * (Self::SPOT_SIZE + Self::SPOT_PAD));
+                let p = Point::new( fx, fy);
 
+                let text = Text {
+                    color: Color::from_rgb8(0xAA, 0x47, 0x8A),
+                    size: Self::SPOT_SIZE,
+                    position: p,
+                    horizontal_alignment: alignment::Horizontal::Left,
+                    vertical_alignment: alignment::Vertical::Top,
+                    ..Text::default()
+                };
+                
+                match spot.state {
+                    minefield_rs::SpotState::HiddenEmpty { neighboring_mines } => {
                         frame.fill_rectangle(
-                            Point::new( x, y),
+                            p,
                             Size::new(Self::SPOT_SIZE, Self::SPOT_SIZE),
-                            Color::WHITE,
+                            foreground_color,
                         );
-                    }
+                        frame.fill_text(Text {
+                            content: format!("{}", neighboring_mines),
+                            position: text.position,
+                            ..text
+                        });
+                    },
+                    minefield_rs::SpotState::HiddenMine => {
+                        frame.fill_rectangle(
+                            Point::new( fx, fy),
+                            Size::new(Self::SPOT_SIZE, Self::SPOT_SIZE),
+                            foreground_color,
+                        );
+                        frame.fill_text(".");
+                    },
+                    minefield_rs::SpotState::FlaggedEmpty { neighboring_mines } => {
+                        frame.fill_rectangle(
+                            Point::new( fx, fy),
+                            Size::new(Self::SPOT_SIZE, Self::SPOT_SIZE),
+                            foreground_color,
+                        );
+                        frame.fill_text("F");
+                    },
+                    minefield_rs::SpotState::FlaggedMine => {
+                        frame.fill_rectangle(
+                            Point::new( fx, fy),
+                            Size::new(Self::SPOT_SIZE, Self::SPOT_SIZE),
+                            foreground_color,
+                        );
+                        frame.fill_text("F");
+                    },
+                    minefield_rs::SpotState::RevealedEmpty { neighboring_mines } => {
+                        frame.fill_rectangle(
+                            Point::new( fx, fy),
+                            Size::new(Self::SPOT_SIZE, Self::SPOT_SIZE),
+                            background_color,
+                        );
+                        frame.fill_text(format!("{}",neighboring_mines));
+                    },
+                    minefield_rs::SpotState::ExplodedMine => {
+                        frame.fill_rectangle(
+                            Point::new( fx, fy),
+                            Size::new(Self::SPOT_SIZE, Self::SPOT_SIZE),
+                            foreground_color,
+                        );
+                        frame.fill_text("X");
+                    },
                 }
             }
         });
