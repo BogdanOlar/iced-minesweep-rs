@@ -6,15 +6,29 @@ use minefield_rs::Minefield;
 pub enum Message {
     Reset,
     Info,
-    Settingss,
+    Settings,
+    Minesweep { message: MinesweepMessage },
+}
+
+/// Lower level game logic messages
+#[derive(Debug, Clone)]
+pub enum MinesweepMessage {
     Step{x: u16, y: u16},
     AutoStep{x: u16, y: u16},
-    Flag{x: u16, y: u16}
+    Flag{x: u16, y: u16},
 }
 
 pub struct Minesweep {
+    /// Model
     field: Minefield,
+
+    /// View: a cache of the canvas holding the minefield. A redraw can be forced on it by calling `field_cache.clear()`
     field_cache: Cache,
+
+    game_state: GameState,
+
+    game_config: GameConfig,
+
     seconds: Option<u16>,
     flags: Option<i64>
 }
@@ -26,10 +40,15 @@ impl Application for Minesweep {
     type Flags = ();
 
     fn new(_flags: Self::Flags) -> (Self, iced::Command<Self::Message>) {
+        // TODO: load game config if available
+        let game_config = GameConfig::default();
+
         (
             Self {
-                field: Minefield::new(10, 5).with_mines(3),
+                field: Minefield::new(game_config.width, game_config.height).with_mines(game_config.mines),
                 field_cache: Cache::default(),
+                game_state: GameState::default(),
+                game_config,
                 seconds: None,
                 flags: None,
             },
@@ -43,29 +62,30 @@ impl Application for Minesweep {
 
     fn update(&mut self, message: Self::Message) -> iced::Command<Self::Message> {
         match message {
-            Message::Step { x, y } => {
-                let step_result = self.field.step(x, y);
-                
-                dbg!(step_result);
-                self.field_cache.clear();
-
-                iced::Command::none()
-            },
-            Message::AutoStep { x, y } => {
-                let step_result = self.field.auto_step(x, y);
-                
-                dbg!(step_result);
-                self.field_cache.clear();
-
-                iced::Command::none()
-            },
-            Message::Flag { x, y } => {
-                let flag_result = self.field.toggle_flag(x, y);
-                
-                dbg!(flag_result);
-                self.field_cache.clear();
-
-                iced::Command::none()
+            Message::Minesweep { message } => {
+                match message {
+                    MinesweepMessage::Step { x, y } => {
+                        let _step_result = self.field.step(x, y);
+                        
+                        self.field_cache.clear();
+        
+                        iced::Command::none()
+                    },
+                    MinesweepMessage::AutoStep { x, y } => {
+                        let _auto_step_result = self.field.auto_step(x, y);
+                        
+                        self.field_cache.clear();
+        
+                        iced::Command::none()
+                    },
+                    MinesweepMessage::Flag { x, y } => {
+                        let _flag_result = self.field.toggle_flag(x, y);
+                        
+                        self.field_cache.clear();
+        
+                        iced::Command::none()
+                    },
+                }
             },
             Message::Reset => {
                 iced::Command::none()
@@ -73,7 +93,7 @@ impl Application for Minesweep {
             Message::Info => {
                 iced::Command::none()
             },
-            Message::Settingss => {
+            Message::Settings => {
                 iced::Command::none()
             },
         }
@@ -114,11 +134,12 @@ impl Minesweep {
     const COLOR_GREEN: Color = Color::from_rgb(0.0, 255.0, 0.0);
     const COLOR_GRAY: Color = Color::from_rgb(160.0, 160.0, 160.0);
 
-    const MINE_CAHR: &str = "☢";
+    const MINE_CHAR: &str = "☢";
     const MINE_COLOR: Color = Self::COLOR_RED;
     const MINE_EXPLODED_CHAR: &str = "💥";
-    const MINE_EPLODED_COLOR: Color = Self::COLOR_RED;
-    const FLAG_CHAR: &str = "⚐";
+    const MINE_EXPLODED_COLOR: Color = Self::COLOR_RED;
+    // const FLAG_CHAR: &str = "⚐";
+    const FLAG_CHAR: &str = "f";
     const FLAG_COLOR_CORRECT: Color = Self::COLOR_GREEN;
     const FLAG_COLOR_WRONG: Color = Self::COLOR_RED;
     const EMPTY_SPOT_CHARS: [&str; 9] = [" ", "1", "2", "3", "4", "5", "6", "7", "8"];
@@ -134,6 +155,14 @@ impl Minesweep {
     const READY_COLOR: Color = Self::COLOR_GRAY;
     const FLAG_COUNT_OK_COLOR: Color = Self::COLOR_GRAY;
     const FLAG_COUNT_ERR_COLOR: Color = Self::COLOR_LIGHT_RED;
+
+    #[allow(dead_code)]
+    pub fn with_configs(mut self, game_config: GameConfig) -> Self {
+        self.game_config = game_config;
+        self.field = Minefield::new(self.game_config.width, self.game_config.height).with_mines(self.game_config.mines);
+
+        self
+    }
 
     fn view_controls(&self) -> Element<Message> {
         let display_seconds = column![
@@ -163,7 +192,7 @@ impl Minesweep {
             display_seconds,
             display_flags,
             button(Self::SETTINGS_BTN_CHAR)
-                .on_press(Message::Settingss)
+                .on_press(Message::Settings)
                 .style(theme::Button::Primary),
             button(Self::ABOUT_BTN_CHAR)
                 .on_press(Message::Info)
@@ -213,13 +242,13 @@ impl canvas::Program<Message> for Minesweep {
                         iced::mouse::Event::ButtonPressed(mouse_button) => {
                             match mouse_button {
                                 iced::mouse::Button::Left => {
-                                    (event::Status::Captured, Some(Message::Step { x, y }))
+                                    (event::Status::Captured, Some(Message::Minesweep { message: MinesweepMessage::Step { x, y } }))
                                 },
                                 iced::mouse::Button::Right => {
-                                    (event::Status::Captured, Some(Message::Flag { x, y }))
+                                    (event::Status::Captured, Some(Message::Minesweep { message: MinesweepMessage::Flag { x, y } }))
                                 },
                                 iced::mouse::Button::Middle => {
-                                    (event::Status::Captured, Some(Message::AutoStep { x, y }))
+                                    (event::Status::Captured, Some(Message::Minesweep { message: MinesweepMessage::AutoStep { x, y } }))
                                 },
                                 iced::mouse::Button::Other(_) => {
                                     (event::Status::Ignored, None)
@@ -271,7 +300,6 @@ impl canvas::Program<Message> for Minesweep {
                 let p = origin_point + Vector::new(fx, fy);
 
                 let text = Text {
-                    color: Color::from_rgb8(0xAA, 0x47, 0x8A),
                     size: Self::CELL_SIZE,
                     position: p,
                     horizontal_alignment: alignment::Horizontal::Left,
@@ -306,7 +334,12 @@ impl canvas::Program<Message> for Minesweep {
                             Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
                             foreground_color,
                         );
-                        frame.fill_text("F");
+                        frame.fill_text(Text {
+                            content: format!("{}", Self::FLAG_CHAR),
+                            position: text.position,
+                            color: Self::FLAG_COLOR_CORRECT,
+                            ..text
+                        });
                     },
                     minefield_rs::SpotState::FlaggedMine => {
                         frame.fill_rectangle(
@@ -314,7 +347,12 @@ impl canvas::Program<Message> for Minesweep {
                             Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
                             foreground_color,
                         );
-                        frame.fill_text("F");
+                        frame.fill_text(Text {
+                            content: format!("{}", Self::FLAG_CHAR),
+                            position: text.position,
+                            color: Self::FLAG_COLOR_CORRECT,
+                            ..text
+                        });
                     },
                     minefield_rs::SpotState::RevealedEmpty { neighboring_mines } => {
                         frame.fill_rectangle(
@@ -322,7 +360,13 @@ impl canvas::Program<Message> for Minesweep {
                             Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
                             background_color,
                         );
-                        frame.fill_text(format!("{}",neighboring_mines));
+                        
+                        frame.fill_text(Text {
+                            content: format!("{}", Self::EMPTY_SPOT_CHARS[neighboring_mines as usize]),
+                            position: text.position,
+                            color: Self::EMPTY_SPOT_COLORS[neighboring_mines as usize],
+                            ..text
+                        });
                     },
                     minefield_rs::SpotState::ExplodedMine => {
                         frame.fill_rectangle(
@@ -330,7 +374,12 @@ impl canvas::Program<Message> for Minesweep {
                             Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
                             foreground_color,
                         );
-                        frame.fill_text("X");
+                        frame.fill_text(Text {
+                            content: format!("{}", Self::MINE_EXPLODED_CHAR),
+                            position: text.position,
+                            color: Self::MINE_EXPLODED_COLOR,
+                            ..text
+                        });
                     },
                 }
             }
@@ -350,5 +399,62 @@ pub enum Interaction {
 impl Default for Interaction {
     fn default() -> Self {
         Self::None
+    }
+}
+
+/// Current state of the game
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+enum GameState {
+    /// Game is ready to start running
+    Ready,
+
+    /// Game is running
+    Running { seconds: u32, flags_placed: u32 },
+
+    /// Game is stopped, and was either won (`true`), or lost (`false`)
+    Stopped { is_won: bool, seconds: u32, flags_placed: u32}
+}
+
+impl Default for GameState {
+    fn default() -> Self {
+        Self::Ready
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GameConfig {
+    pub width: u16,
+    pub height: u16,
+    pub mines: u32,
+}
+
+impl Default for GameConfig {
+    fn default() -> Self {
+        Self { width: 10, height: 10, mines: 10 }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum GameDifficulty {
+    Easy,
+    Medium,
+    Hard,
+}
+
+impl GameDifficulty {
+    pub const EASY: GameConfig = GameConfig { width: 10, height: 10, mines: 10 };
+    pub const MEDIUM: GameConfig = GameConfig { width: 16, height: 16, mines: 40 };
+    pub const HARD: GameConfig = GameConfig { width: 30, height: 16, mines: 99 };
+
+    pub fn from_config(config: &GameConfig) -> Self {
+        if *config == Self::EASY {
+            Self::Easy
+        } else if *config == Self::MEDIUM {
+            Self::Medium
+        } else if *config == Self::HARD {
+            Self::Hard
+        } else {
+            unreachable!()
+        }
     }
 }
