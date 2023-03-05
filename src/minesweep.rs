@@ -7,6 +7,9 @@ pub enum Message {
     Reset,
     Info,
     Settingss,
+    Step{x: u16, y: u16},
+    AutoStep{x: u16, y: u16},
+    Flag{x: u16, y: u16}
 }
 
 pub struct Minesweep {
@@ -39,8 +42,41 @@ impl Application for Minesweep {
     }
 
     fn update(&mut self, message: Self::Message) -> iced::Command<Self::Message> {
-        info!("{:?}", message);
-        iced::Command::none()
+        match message {
+            Message::Step { x, y } => {
+                let step_result = self.field.step(x, y);
+                
+                dbg!(step_result);
+                self.field_cache.clear();
+
+                iced::Command::none()
+            },
+            Message::AutoStep { x, y } => {
+                let step_result = self.field.auto_step(x, y);
+                
+                dbg!(step_result);
+                self.field_cache.clear();
+
+                iced::Command::none()
+            },
+            Message::Flag { x, y } => {
+                let flag_result = self.field.toggle_flag(x, y);
+                
+                dbg!(flag_result);
+                self.field_cache.clear();
+
+                iced::Command::none()
+            },
+            Message::Reset => {
+                iced::Command::none()
+            },
+            Message::Info => {
+                iced::Command::none()
+            },
+            Message::Settingss => {
+                iced::Command::none()
+            },
+        }
     }
 
     fn view(&self) -> iced::Element<'_, Self::Message, iced::Renderer<Self::Theme>> {
@@ -58,12 +94,46 @@ impl Application for Minesweep {
 }
 
 impl Minesweep {
-    const APP_NAME: &str = "Minesweep-Rs - Iced";
+    const APP_NAME: &str = "iced minesweep-rs";
     const REFRESH_BTN_CHAR: &str = "New";
     const SETTINGS_BTN_CHAR: &str = "Settings";
     const ABOUT_BTN_CHAR: &str = "About";
+    // const REFRESH_BTN_CHAR: &str = "🔄";
+    // const SETTINGS_BTN_CHAR: &str = "🛠";
+    // const ABOUT_BTN_CHAR: &str = "ℹ";
+    
+    /// Size of spor on canvas, including padding
     const SPOT_SIZE: f32 = 40.0;
+    /// Interior padding of spot
     const SPOT_PAD: f32 = 5.0;
+    const CELL_SIZE: f32 = Self::SPOT_SIZE - (Self::SPOT_PAD * 2.0);
+
+
+    const COLOR_RED: Color = Color::from_rgb(255.0, 0.0, 0.0);
+    const COLOR_LIGHT_RED: Color = Color::from_rgb(255.0, 128.0, 128.0);
+    const COLOR_GREEN: Color = Color::from_rgb(0.0, 255.0, 0.0);
+    const COLOR_GRAY: Color = Color::from_rgb(160.0, 160.0, 160.0);
+
+    const MINE_CAHR: &str = "☢";
+    const MINE_COLOR: Color = Self::COLOR_RED;
+    const MINE_EXPLODED_CHAR: &str = "💥";
+    const MINE_EPLODED_COLOR: Color = Self::COLOR_RED;
+    const FLAG_CHAR: &str = "⚐";
+    const FLAG_COLOR_CORRECT: Color = Self::COLOR_GREEN;
+    const FLAG_COLOR_WRONG: Color = Self::COLOR_RED;
+    const EMPTY_SPOT_CHARS: [&str; 9] = [" ", "1", "2", "3", "4", "5", "6", "7", "8"];
+    const EMPTY_SPOT_COLORS: [Color; Self::EMPTY_SPOT_CHARS.len()] = [
+        Color::WHITE, Color::WHITE, Color::WHITE,
+        Color::WHITE, Color::WHITE, Color::WHITE,
+        Color::WHITE, Color::WHITE, Color::WHITE
+    ];
+    const HIDDEN_SPOT_CHAR: &str = " ";
+    const HIDDEN_SPOT_COLOR: Color = Self::COLOR_GRAY;
+    const WON_COLOR: Color = Self::COLOR_GREEN;
+    const LOST_COLOR: Color = Self::COLOR_RED;
+    const READY_COLOR: Color = Self::COLOR_GRAY;
+    const FLAG_COUNT_OK_COLOR: Color = Self::COLOR_GRAY;
+    const FLAG_COUNT_ERR_COLOR: Color = Self::COLOR_LIGHT_RED;
 
     fn view_controls(&self) -> Element<Message> {
         let display_seconds = column![
@@ -123,24 +193,52 @@ impl canvas::Program<Message> for Minesweep {
         event: Event,
         bounds: Rectangle,
         cursor: Cursor,
-    ) -> (event::Status, Option<Message>) {
-        let cursor_position =
-            if let Some(position) = cursor.position_in(&bounds) {
-                position
-            } else {
-                return (event::Status::Ignored, None);
-            };
-        
-        match event {
-            Event::Mouse(m) => {
-               // TODO: add handling for mouse (desktop + WASM in browser)
-               (event::Status::Ignored, None)
-            },
-            Event::Touch(_t) => {
-                // TODO: add handling for touch (WASM on mobile devices)
-                (event::Status::Ignored, None)
-            },
-            Event::Keyboard(_) => (event::Status::Ignored, None),
+    ) -> (event::Status, Option<Message>) {            
+        // determine where to draw the spots
+        let f_width = self.field.width() as f32 * Self::SPOT_SIZE;
+        let f_height = self.field.height() as f32 * Self::SPOT_SIZE;
+
+        let f_o_x = (bounds.width - f_width) / 2.0;
+        let f_o_y = (bounds.height - f_height) / 2.0;
+        let origin_point = Point::new( bounds.x + f_o_x, bounds.y + f_o_y);
+        let origin_rectangle = Rectangle::new(origin_point, Size::new(f_width, f_height));
+
+        if let Some(position) =  cursor.position_in(&origin_rectangle) {
+            let x = (position.x / Self::SPOT_SIZE as f32).floor() as u16;
+            let y = (position.y / Self::SPOT_SIZE as f32).floor() as u16;
+
+            match event {
+                Event::Mouse(mouse_event) => {
+                    match mouse_event {
+                        iced::mouse::Event::ButtonPressed(mouse_button) => {
+                            match mouse_button {
+                                iced::mouse::Button::Left => {
+                                    (event::Status::Captured, Some(Message::Step { x, y }))
+                                },
+                                iced::mouse::Button::Right => {
+                                    (event::Status::Captured, Some(Message::Flag { x, y }))
+                                },
+                                iced::mouse::Button::Middle => {
+                                    (event::Status::Captured, Some(Message::AutoStep { x, y }))
+                                },
+                                iced::mouse::Button::Other(_) => {
+                                    (event::Status::Ignored, None)
+                                },
+                            }
+                        },
+                        _ => {
+                            (event::Status::Ignored, None)
+                        }
+                    }
+                },
+                Event::Touch(_t) => {
+                    // TODO: add handling for touch (WASM on mobile devices)
+                    (event::Status::Ignored, None)
+                },
+                Event::Keyboard(_) => (event::Status::Ignored, None),
+            }
+        } else {
+            (event::Status::Ignored, None)
         }
     }
 
@@ -158,22 +256,23 @@ impl canvas::Program<Message> for Minesweep {
             frame.fill(&background, background_color.clone());
 
             // determine where to draw the spots
-            let row_size = self.field.width() as f32 * Self::SPOT_SIZE + (self.field.width().saturating_sub(1) as f32 * Self::SPOT_PAD);
-            let col_size = self.field.height() as f32 * Self::SPOT_SIZE + (self.field.height().saturating_sub(1) as f32 * Self::SPOT_PAD);
+            let f_width = self.field.width() as f32 * Self::SPOT_SIZE;
+            let f_height = self.field.height() as f32 * Self::SPOT_SIZE;
 
-            let o_x = (frame.width() - row_size) / 2.0;
-            let o_y = (frame.height() - col_size) / 2.0;
+            let f_o_x = (frame.width() - f_width) / 2.0;
+            let f_o_y = (frame.height() - f_height) / 2.0;
+            let origin_point = Point::new( f_o_x, f_o_y);
 
             let foreground_color = Color::WHITE;
             // draw the spots
-            for (coords, spot) in self.field.spots() {
-                let fx = o_x + (coords.0 as f32 * (Self::SPOT_SIZE + Self::SPOT_PAD));
-                let fy = o_y + (coords.1 as f32 * (Self::SPOT_SIZE + Self::SPOT_PAD));
-                let p = Point::new( fx, fy);
+            for (&(ix, iy), spot) in self.field.spots() {
+                let fx = (ix as f32 * Self::SPOT_SIZE) + Self::SPOT_PAD;
+                let fy = (iy as f32 * Self::SPOT_SIZE) + Self::SPOT_PAD;
+                let p = origin_point + Vector::new(fx, fy);
 
                 let text = Text {
                     color: Color::from_rgb8(0xAA, 0x47, 0x8A),
-                    size: Self::SPOT_SIZE,
+                    size: Self::CELL_SIZE,
                     position: p,
                     horizontal_alignment: alignment::Horizontal::Left,
                     vertical_alignment: alignment::Vertical::Top,
@@ -184,7 +283,7 @@ impl canvas::Program<Message> for Minesweep {
                     minefield_rs::SpotState::HiddenEmpty { neighboring_mines } => {
                         frame.fill_rectangle(
                             p,
-                            Size::new(Self::SPOT_SIZE, Self::SPOT_SIZE),
+                            Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
                             foreground_color,
                         );
                         frame.fill_text(Text {
@@ -195,40 +294,40 @@ impl canvas::Program<Message> for Minesweep {
                     },
                     minefield_rs::SpotState::HiddenMine => {
                         frame.fill_rectangle(
-                            Point::new( fx, fy),
-                            Size::new(Self::SPOT_SIZE, Self::SPOT_SIZE),
+                            p,
+                            Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
                             foreground_color,
                         );
                         frame.fill_text(".");
                     },
-                    minefield_rs::SpotState::FlaggedEmpty { neighboring_mines } => {
+                    minefield_rs::SpotState::FlaggedEmpty { neighboring_mines: _ } => {
                         frame.fill_rectangle(
-                            Point::new( fx, fy),
-                            Size::new(Self::SPOT_SIZE, Self::SPOT_SIZE),
+                            p,
+                            Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
                             foreground_color,
                         );
                         frame.fill_text("F");
                     },
                     minefield_rs::SpotState::FlaggedMine => {
                         frame.fill_rectangle(
-                            Point::new( fx, fy),
-                            Size::new(Self::SPOT_SIZE, Self::SPOT_SIZE),
+                            p,
+                            Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
                             foreground_color,
                         );
                         frame.fill_text("F");
                     },
                     minefield_rs::SpotState::RevealedEmpty { neighboring_mines } => {
                         frame.fill_rectangle(
-                            Point::new( fx, fy),
-                            Size::new(Self::SPOT_SIZE, Self::SPOT_SIZE),
+                            p,
+                            Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
                             background_color,
                         );
                         frame.fill_text(format!("{}",neighboring_mines));
                     },
                     minefield_rs::SpotState::ExplodedMine => {
                         frame.fill_rectangle(
-                            Point::new( fx, fy),
-                            Size::new(Self::SPOT_SIZE, Self::SPOT_SIZE),
+                            p,
+                            Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
                             foreground_color,
                         );
                         frame.fill_text("X");
