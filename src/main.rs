@@ -5,7 +5,6 @@ use minesweep::Minesweep;
 extern crate log;
 
 mod minesweep;
-mod minefield;
 
 pub fn main() -> iced::Result {
     env_logger::builder().format_timestamp(None).init();

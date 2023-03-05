@@ -1,6 +1,6 @@
 use iced::{Application, Theme, executor, widget::{row, column, button, text, container, canvas::{self, Cache, Path, Event, Cursor, event}, Canvas, Column, Row, Button}, Element, Alignment, theme, Length, Vector, Point, Color, Size, Rectangle};
 
-use crate::minefield::Minefield;
+use minefield_rs::Minefield;
 
 #[derive(Debug, Clone)]
 pub enum Message {
