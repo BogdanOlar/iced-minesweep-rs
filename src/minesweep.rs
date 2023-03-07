@@ -1,4 +1,4 @@
-use iced::{Application, Theme, executor, widget::{self, canvas::{self, Cache, Path, Event, Cursor, event, Text}, Canvas}, Element, Alignment, theme, Length, Vector, Point, Color, Size, Rectangle, alignment, Command};
+use iced::{Application, Theme, executor, widget::{self, canvas::{self, Cache, Path, Event, Cursor, event, Text}, Canvas}, Element, Alignment, theme, Length, Vector, Point, Color, Size, Rectangle, alignment, Command, mouse};
 use iced_native::{command, window};
 use minefield_rs::{Minefield, StepResult, FlagToggleResult};
 
@@ -196,7 +196,7 @@ impl Minesweep {
     /// Size of spor on canvas, including padding
     const SPOT_SIZE: f32 = 40.0;
     /// Interior padding of spot
-    const SPOT_PAD: f32 = 5.0;
+    const SPOT_PAD: f32 = 3.0;
     const CELL_SIZE: f32 = Self::SPOT_SIZE - (Self::SPOT_PAD * 2.0);
 
 
@@ -205,10 +205,11 @@ impl Minesweep {
     const COLOR_GREEN: Color = Color::from_rgb(0.0, 255.0, 0.0);
     const COLOR_GRAY: Color = Color::from_rgb(160.0, 160.0, 160.0);
 
-    const MINE_CHAR: &str = "☢";
+    // const MINE_CHAR: &str = "☢";
+    const MINE_CHAR: &str = "x";
     const MINE_COLOR: Color = Self::COLOR_RED;
     // const MINE_EXPLODED_CHAR: &str = "💥";
-    const MINE_EXPLODED_CHAR: &str = "*";
+    const MINE_EXPLODED_CHAR: &str = "#";
     const MINE_EXPLODED_COLOR: Color = Self::COLOR_RED;
     // const FLAG_CHAR: &str = "⚐";
     const FLAG_CHAR: &str = "f";
@@ -358,18 +359,18 @@ impl canvas::Program<Message> for Minesweep {
             match event {
                 Event::Mouse(mouse_event) => {
                     match mouse_event {
-                        iced::mouse::Event::ButtonPressed(mouse_button) => {
+                        mouse::Event::ButtonPressed(mouse_button) => {
                             match mouse_button {
-                                iced::mouse::Button::Left => {
+                                mouse::Button::Left => {
                                     (event::Status::Captured, Some(Message::Minesweep { message: MinesweepMessage::Step { x, y } }))
                                 },
-                                iced::mouse::Button::Right => {
+                                mouse::Button::Right => {
                                     (event::Status::Captured, Some(Message::Minesweep { message: MinesweepMessage::Flag { x, y } }))
                                 },
-                                iced::mouse::Button::Middle => {
+                                mouse::Button::Middle => {
                                     (event::Status::Captured, Some(Message::Minesweep { message: MinesweepMessage::AutoStep { x, y } }))
                                 },
-                                iced::mouse::Button::Other(_) => {
+                                mouse::Button::Other(_) => {
                                     (event::Status::Ignored, None)
                                 },
                             }
@@ -411,18 +412,18 @@ impl canvas::Program<Message> for Minesweep {
             let f_o_y = (frame.height() - f_height) / 2.0;
             let origin_point = Point::new( f_o_x, f_o_y);
 
-            let foreground_color = Color::WHITE;
             // draw the spots
             for (&(ix, iy), spot) in self.field.spots() {
                 let fx = (ix as f32 * Self::SPOT_SIZE) + Self::SPOT_PAD;
                 let fy = (iy as f32 * Self::SPOT_SIZE) + Self::SPOT_PAD;
                 let p = origin_point + Vector::new(fx, fy);
-
+                
+                let text_position = Point::new(p.x + (Self::CELL_SIZE / 2.0), p.y + (Self::CELL_SIZE / 2.0));
                 let text = Text {
                     size: Self::CELL_SIZE,
-                    position: p,
-                    horizontal_alignment: alignment::Horizontal::Left,
-                    vertical_alignment: alignment::Vertical::Top,
+                    position: text_position,
+                    horizontal_alignment: alignment::Horizontal::Center,
+                    vertical_alignment: alignment::Vertical::Center,
                     ..Text::default()
                 };
                 
@@ -431,22 +432,55 @@ impl canvas::Program<Message> for Minesweep {
                         frame.fill_rectangle(
                             p,
                             Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
-                            foreground_color,
+                            Self::HIDDEN_SPOT_COLOR,
                         );
                     },
                     minefield_rs::SpotState::HiddenMine => {
                         frame.fill_rectangle(
                             p,
                             Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
-                            foreground_color,
+                            Self::HIDDEN_SPOT_COLOR,
                         );
+
+                        if let GameState::Stopped { is_won: _ } = self.game_state {
+                            frame.fill_text(Text {
+                                content: format!("{}", Self::MINE_CHAR),
+                                position: text.position,
+                                color: Self::MINE_COLOR,
+                                ..text
+                            });
+                        }
                     },
-                    minefield_rs::SpotState::FlaggedEmpty { neighboring_mines: _ } | minefield_rs::SpotState::FlaggedMine => {
+                    minefield_rs::SpotState::FlaggedEmpty { neighboring_mines: _ } => {
                         frame.fill_rectangle(
                             p,
                             Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
-                            foreground_color,
+                            Self::HIDDEN_SPOT_COLOR,
                         );
+
+                        let color = match self.game_state {
+                            GameState::Ready | GameState::Running => {
+                                Self::FLAG_COLOR_CORRECT
+                            },
+                            GameState::Stopped { is_won: _ } => {
+                                Self::FLAG_COLOR_WRONG
+                            },
+                        };
+
+                        frame.fill_text(Text {
+                            content: format!("{}", Self::FLAG_CHAR),
+                            position: text.position,
+                            color,
+                            ..text
+                        });
+                    },
+                    minefield_rs::SpotState::FlaggedMine => {
+                        frame.fill_rectangle(
+                            p,
+                            Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
+                            Self::HIDDEN_SPOT_COLOR,
+                        );
+
                         frame.fill_text(Text {
                             content: format!("{}", Self::FLAG_CHAR),
                             position: text.position,
@@ -472,7 +506,7 @@ impl canvas::Program<Message> for Minesweep {
                         frame.fill_rectangle(
                             p,
                             Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
-                            foreground_color,
+                            background_color,
                         );
                         frame.fill_text(Text {
                             content: format!("{}", Self::MINE_EXPLODED_CHAR),
