@@ -1,4 +1,5 @@
-use iced::{Application, Theme, executor, widget::{self, canvas::{self, Cache, Path, Event, Cursor, event, Text}, Canvas}, Element, Alignment, theme, Length, Vector, Point, Color, Size, Rectangle, alignment, Command, mouse, Subscription};
+use std::time::{Duration, Instant};
+use iced::{Application, Theme, executor, widget::{self, canvas::{self, Cache, Path, Event, Cursor, event, Text}, Canvas}, Element, Alignment, theme, Length, Vector, Point, Color, Size, Rectangle, alignment, Command, mouse, Subscription, time};
 use iced_native::{command, window};
 use minefield_rs::{Minefield, StepResult, FlagToggleResult};
 
@@ -8,7 +9,7 @@ pub enum Message {
     Info,
     Settings,
     Minesweep { message: MinesweepMessage },
-    Tick(time::OffsetDateTime),
+    Tick(Instant),
 }
 
 /// Lower level game logic messages
@@ -28,7 +29,7 @@ pub struct Minesweep {
 
     game_state: GameState,
     
-    elapsed_seconds: Option<u32>,
+    elapsed_seconds: Duration,
     remaining_flags: i64,
 
     game_config: GameConfig,
@@ -49,7 +50,7 @@ impl Application for Minesweep {
             field_cache: Cache::default(),
             game_state: GameState::default(),
             game_config,
-            elapsed_seconds: None,
+            elapsed_seconds: Duration::default(),
             remaining_flags: game_config.mines as i64,
         };
         let (width, height) = minesweep.desired_window_size();
@@ -70,7 +71,7 @@ impl Application for Minesweep {
                     MinesweepMessage::Step { x, y } => {
                         self.check_ready_to_running();
                         
-                        if let GameState::Running =self.game_state {
+                        if let GameState::Running(_) =self.game_state {
                             let step_result = self.field.step(x, y);
 
                             match step_result {
@@ -87,7 +88,7 @@ impl Application for Minesweep {
                         }
                     },
                     MinesweepMessage::AutoStep { x, y } => {
-                        if let GameState::Running =self.game_state {
+                        if let GameState::Running(_) =self.game_state {
                             match self.field.auto_step(x, y) {
                                 StepResult::Boom => {
                                     self.game_over(false);
@@ -104,7 +105,7 @@ impl Application for Minesweep {
                     MinesweepMessage::Flag { x, y } => {
                         self.check_ready_to_running();
 
-                        if let GameState::Running =self.game_state {
+                        if let GameState::Running(_) =self.game_state {
                             match self.field.toggle_flag(x, y) {
                                 FlagToggleResult::Removed => {
                                     self.remaining_flags += 1;
@@ -129,7 +130,7 @@ impl Application for Minesweep {
                 self.field = Minefield::new(self.game_config.width, self.game_config.height).with_mines(self.game_config.mines);
                 
                 self.game_state = GameState::Ready;
-                self.elapsed_seconds = None;
+                self.elapsed_seconds = Duration::default();
                 self.remaining_flags = self.game_config.mines as i64;
 
                 self.field_cache.clear();
@@ -142,7 +143,7 @@ impl Application for Minesweep {
 
                 self.field = Minefield::new(self.game_config.width, self.game_config.height).with_mines(self.game_config.mines);
                 self.game_state = GameState::default();
-                self.elapsed_seconds = None;
+                self.elapsed_seconds = Duration::default();
                 self.remaining_flags = self.game_config.mines as i64;
                 
                 let (width, height) = self.desired_window_size();
@@ -157,7 +158,7 @@ impl Application for Minesweep {
 
                 self.field = Minefield::new(self.game_config.width, self.game_config.height).with_mines(self.game_config.mines);
                 self.game_state = GameState::default();
-                self.elapsed_seconds = None;
+                self.elapsed_seconds = Duration::default();
                 self.remaining_flags = self.game_config.mines as i64;
                 
                 let (width, height) = self.desired_window_size();
@@ -166,11 +167,12 @@ impl Application for Minesweep {
         
                 command
             },
-            Message::Tick(_) => {
-                if let Some(seconds) = self.elapsed_seconds {
-                    self.elapsed_seconds = Some(seconds + 1);
+            Message::Tick(now) => {
+                if let GameState::Running(last_tick) = &mut self.game_state {
+                    self.elapsed_seconds += now - *last_tick;
+                    *last_tick = now;
                 }
-
+                
                 Command::none()
             },
         }
@@ -190,17 +192,16 @@ impl Application for Minesweep {
     }
     
     fn subscription(&self) -> Subscription<Message> {
-        if let GameState::Running = self.game_state {
-            iced::time::every(std::time::Duration::from_millis(1000)).map(|_| {
-                Message::Tick(
-                    time::OffsetDateTime::now_local()
-                        .unwrap_or_else(|_| time::OffsetDateTime::now_utc()),
-                )
-            })
+        if let GameState::Running(_) = self.game_state {
+            time::every(Duration::from_millis(1000)).map(Message::Tick)
         } else {
             Subscription::none()
         }
 
+    }
+
+    fn theme(&self) -> Theme {
+        Self::Theme::Dark
     }
 }
 
@@ -281,11 +282,11 @@ impl Minesweep {
             GameState::Ready => {
                 widget::text("---").size(50)
             },
-            GameState::Running => {
-                widget::text(self.elapsed_seconds.unwrap()).size(50)
+            GameState::Running(_) => {
+                widget::text(self.elapsed_seconds.as_secs()).size(50)
             },
             GameState::Stopped { is_won: _ } => {
-                widget::text(self.elapsed_seconds.unwrap()).size(50)
+                widget::text(self.elapsed_seconds.as_secs()).size(50)
             },
         };
         let display_seconds = widget::column![
@@ -298,7 +299,7 @@ impl Minesweep {
             GameState::Ready => {
                 widget::text("---").size(50)
             },
-            GameState::Running => {
+            GameState::Running(_) => {
                 widget::text(self.remaining_flags).size(50)
             },
             GameState::Stopped { is_won: _} => {
@@ -341,8 +342,8 @@ impl Minesweep {
 
     fn check_ready_to_running(&mut self) {
         if let GameState::Ready = self.game_state {
-            self.game_state = GameState::Running;
-            self.elapsed_seconds = Some(0);
+            self.elapsed_seconds = Duration::default();
+            self.game_state = GameState::Running(Instant::now());
             
             // TODO: start timer
         }
@@ -360,7 +361,7 @@ impl canvas::Program<Message> for Minesweep {
 
     fn update(
         &self,
-        interaction: &mut Interaction,
+        _interaction: &mut Interaction,
         event: Event,
         bounds: Rectangle,
         cursor: Cursor,
@@ -481,7 +482,7 @@ impl canvas::Program<Message> for Minesweep {
                         );
 
                         let color = match self.game_state {
-                            GameState::Ready | GameState::Running => {
+                            GameState::Ready | GameState::Running(_) => {
                                 Self::FLAG_COLOR_CORRECT
                             },
                             GameState::Stopped { is_won: _ } => {
@@ -565,7 +566,7 @@ enum GameState {
     Ready,
 
     /// Game is running
-    Running,
+    Running (Instant),
 
     /// Game is stopped, and was either won (`true`), or lost (`false`)
     Stopped { is_won: bool }
