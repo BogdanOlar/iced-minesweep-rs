@@ -4,6 +4,15 @@ A rust implementation of the popular game, using the [iced](https://github.com/i
 
 ![screenshot](.github/Screenshot.png)
 
+## TODO
+
+- [ ] Linux
+- [ ] WASM
+- [ ] WASM touch display
+- [ ] Config
+- [ ] High scores
+- [ ] Layout
+
 ## Build & run
 
 ### Desktop
@@ -19,15 +28,6 @@ cargo run --release
 ### Wasm
 
 TODO:
-
-## TODO
-
-- [ ] Linux
-- [ ] WASM
-- [ ] WASM touch display
-- [ ] Config
-- [ ] High scores
-- [ ] Layout
 
 ## License
 
