@@ -18,13 +18,11 @@ cargo run --release
 
 ### Wasm
 
-[Try it out!](https://iced-minesweep-rs.pages.dev/)
-
 TODO:
 
 ## TODO
 
-- [X] Linux
+- [ ] Linux
 - [ ] WASM
 - [ ] WASM touch display
 - [ ] Config

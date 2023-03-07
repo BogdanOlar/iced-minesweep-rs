@@ -1,4 +1,4 @@
-use iced::{Application, Theme, executor, widget::{self, canvas::{self, Cache, Path, Event, Cursor, event, Text}, Canvas}, Element, Alignment, theme, Length, Vector, Point, Color, Size, Rectangle, alignment, Command, mouse};
+use iced::{Application, Theme, executor, widget::{self, canvas::{self, Cache, Path, Event, Cursor, event, Text}, Canvas}, Element, Alignment, theme, Length, Vector, Point, Color, Size, Rectangle, alignment, Command, mouse, Subscription};
 use iced_native::{command, window};
 use minefield_rs::{Minefield, StepResult, FlagToggleResult};
 
@@ -8,6 +8,7 @@ pub enum Message {
     Info,
     Settings,
     Minesweep { message: MinesweepMessage },
+    Tick(time::OffsetDateTime),
 }
 
 /// Lower level game logic messages
@@ -165,6 +166,13 @@ impl Application for Minesweep {
         
                 command
             },
+            Message::Tick(_) => {
+                if let Some(seconds) = self.elapsed_seconds {
+                    self.elapsed_seconds = Some(seconds + 1);
+                }
+
+                Command::none()
+            },
         }
     }
 
@@ -179,6 +187,20 @@ impl Application for Minesweep {
             .width(Length::Shrink)
             .height(Length::Shrink)
             .into()
+    }
+    
+    fn subscription(&self) -> Subscription<Message> {
+        if let GameState::Running = self.game_state {
+            iced::time::every(std::time::Duration::from_millis(1000)).map(|_| {
+                Message::Tick(
+                    time::OffsetDateTime::now_local()
+                        .unwrap_or_else(|_| time::OffsetDateTime::now_utc()),
+                )
+            })
+        } else {
+            Subscription::none()
+        }
+
     }
 }
 
@@ -206,7 +228,7 @@ impl Minesweep {
     const COLOR_GRAY: Color = Color::from_rgb(160.0, 160.0, 160.0);
 
     // const MINE_CHAR: &str = "☢";
-    const MINE_CHAR: &str = "x";
+    const MINE_CHAR: &str = "X";
     const MINE_COLOR: Color = Self::COLOR_RED;
     // const MINE_EXPLODED_CHAR: &str = "💥";
     const MINE_EXPLODED_CHAR: &str = "#";
