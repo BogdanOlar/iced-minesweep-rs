@@ -1,6 +1,6 @@
-use iced::{Application, Theme, executor, widget::{row, column, button, text, container, canvas::{self, Cache, Path, Event, Cursor, event, Text}, Canvas, Column, Row, Button}, Element, Alignment, theme, Length, Vector, Point, Color, Size, Rectangle, alignment};
-
-use minefield_rs::Minefield;
+use iced::{Application, Theme, executor, widget::{self, canvas::{self, Cache, Path, Event, Cursor, event, Text}, Canvas}, Element, Alignment, theme, Length, Vector, Point, Color, Size, Rectangle, alignment, Command};
+use iced_native::{command, window};
+use minefield_rs::{Minefield, StepResult, FlagToggleResult};
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -26,11 +26,11 @@ pub struct Minesweep {
     field_cache: Cache,
 
     game_state: GameState,
+    
+    elapsed_seconds: Option<u32>,
+    remaining_flags: i64,
 
     game_config: GameConfig,
-
-    seconds: Option<u16>,
-    flags: Option<i64>
 }
 
 impl Application for Minesweep {
@@ -39,76 +39,145 @@ impl Application for Minesweep {
     type Executor = executor::Default;
     type Flags = ();
 
-    fn new(_flags: Self::Flags) -> (Self, iced::Command<Self::Message>) {
+    fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
         // TODO: load game config if available
         let game_config = GameConfig::default();
 
-        (
-            Self {
-                field: Minefield::new(game_config.width, game_config.height).with_mines(game_config.mines),
-                field_cache: Cache::default(),
-                game_state: GameState::default(),
-                game_config,
-                seconds: None,
-                flags: None,
-            },
-            iced::Command::none()
-        )
+        let minesweep = Self {
+            field: Minefield::new(game_config.width, game_config.height).with_mines(game_config.mines),
+            field_cache: Cache::default(),
+            game_state: GameState::default(),
+            game_config,
+            elapsed_seconds: None,
+            remaining_flags: game_config.mines as i64,
+        };
+        let (width, height) = minesweep.desired_window_size();
+
+        let command = Command::single(command::Action::Window(window::Action::Resize { width, height }));
+
+        (minesweep, command)
     }
 
     fn title(&self) -> String {
         String::from(Self::APP_NAME)
     }
 
-    fn update(&mut self, message: Self::Message) -> iced::Command<Self::Message> {
+    fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
         match message {
             Message::Minesweep { message } => {
                 match message {
                     MinesweepMessage::Step { x, y } => {
-                        let _step_result = self.field.step(x, y);
+                        self.check_ready_to_running();
                         
-                        self.field_cache.clear();
-        
-                        iced::Command::none()
+                        if let GameState::Running =self.game_state {
+                            let step_result = self.field.step(x, y);
+
+                            match step_result {
+                                StepResult::Boom => {
+                                    self.game_over(false);
+                                },
+                                StepResult::Phew => {
+                                    if self.field.is_cleared() {
+                                        self.game_over(true);
+                                    }
+                                },
+                                _ => {},
+                            }
+                        }
                     },
                     MinesweepMessage::AutoStep { x, y } => {
-                        let _auto_step_result = self.field.auto_step(x, y);
-                        
-                        self.field_cache.clear();
-        
-                        iced::Command::none()
+                        if let GameState::Running =self.game_state {
+                            match self.field.auto_step(x, y) {
+                                StepResult::Boom => {
+                                    self.game_over(false);
+                                },
+                                StepResult::Phew => {
+                                    if self.field.is_cleared() {
+                                        self.game_over(true);
+                                    }
+                                },
+                                _ => {},
+                            }
+                        }
                     },
                     MinesweepMessage::Flag { x, y } => {
-                        let _flag_result = self.field.toggle_flag(x, y);
-                        
-                        self.field_cache.clear();
-        
-                        iced::Command::none()
+                        self.check_ready_to_running();
+
+                        if let GameState::Running =self.game_state {
+                            match self.field.toggle_flag(x, y) {
+                                FlagToggleResult::Removed => {
+                                    self.remaining_flags += 1;
+                                },
+                                FlagToggleResult::Added => {
+                                    self.remaining_flags -= 1;
+                                    
+                                    if self.field.is_cleared() {
+                                        self.game_over(true);
+                                    }
+                                },
+                                _ => {},
+                            }
+                        }
                     },
                 }
+                
+                self.field_cache.clear();
+                Command::none()
             },
             Message::Reset => {
-                iced::Command::none()
+                self.field = Minefield::new(self.game_config.width, self.game_config.height).with_mines(self.game_config.mines);
+                
+                self.game_state = GameState::Ready;
+                self.elapsed_seconds = None;
+                self.remaining_flags = self.game_config.mines as i64;
+
+                self.field_cache.clear();
+                
+                Command::none()
             },
             Message::Info => {
-                iced::Command::none()
+                // Testing code
+                self.game_config = GameDifficulty::MEDIUM;
+
+                self.field = Minefield::new(self.game_config.width, self.game_config.height).with_mines(self.game_config.mines);
+                self.game_state = GameState::default();
+                self.elapsed_seconds = None;
+                self.remaining_flags = self.game_config.mines as i64;
+                
+                let (width, height) = self.desired_window_size();
+        
+                let command = Command::single(command::Action::Window(window::Action::Resize { width, height }));
+        
+                command
             },
             Message::Settings => {
-                iced::Command::none()
+                // Testing code
+                self.game_config = GameDifficulty::HARD;
+
+                self.field = Minefield::new(self.game_config.width, self.game_config.height).with_mines(self.game_config.mines);
+                self.game_state = GameState::default();
+                self.elapsed_seconds = None;
+                self.remaining_flags = self.game_config.mines as i64;
+                
+                let (width, height) = self.desired_window_size();
+        
+                let command = Command::single(command::Action::Window(window::Action::Resize { width, height }));
+        
+                command
             },
         }
     }
 
     fn view(&self) -> iced::Element<'_, Self::Message, iced::Renderer<Self::Theme>> {
-        let content = column![
+        let content = widget::column![
             self.view_controls(),
             self.view_field()
         ]
-        .align_items(Alignment::Center);
+        .align_items(Alignment::Start);
 
-        container(content)
-            .width(Length::Fill)
-            .height(Length::Fill)
+        widget::container(content)
+            .width(Length::Shrink)
+            .height(Length::Shrink)
             .into()
     }
 }
@@ -122,6 +191,8 @@ impl Minesweep {
     // const SETTINGS_BTN_CHAR: &str = "🛠";
     // const ABOUT_BTN_CHAR: &str = "ℹ";
     
+    const TOOLBAR_HEIGHT: f32 = 100.0;
+    const FIELD_PAD: f32 = 20.0;
     /// Size of spor on canvas, including padding
     const SPOT_SIZE: f32 = 40.0;
     /// Interior padding of spot
@@ -136,7 +207,8 @@ impl Minesweep {
 
     const MINE_CHAR: &str = "☢";
     const MINE_COLOR: Color = Self::COLOR_RED;
-    const MINE_EXPLODED_CHAR: &str = "💥";
+    // const MINE_EXPLODED_CHAR: &str = "💥";
+    const MINE_EXPLODED_CHAR: &str = "*";
     const MINE_EXPLODED_COLOR: Color = Self::COLOR_RED;
     // const FLAG_CHAR: &str = "⚐";
     const FLAG_CHAR: &str = "f";
@@ -164,53 +236,100 @@ impl Minesweep {
         self
     }
 
+    fn desired_window_size(&self) -> (u32, u32) {
+        let (field_width, field_height) = self.desired_field_size();
+        
+        let width = field_width as u32;
+        let height = field_height as u32 + Self::TOOLBAR_HEIGHT as u32;
+
+        (width, height)
+    }
+
+    fn desired_field_size(&self) -> (f32, f32) {
+        let width = (Self::SPOT_SIZE * self.field.width() as f32) + (Self::FIELD_PAD * 2.0);
+        let height = (Self::SPOT_SIZE * self.field.height() as f32) + (Self::FIELD_PAD * 2.0);
+
+        (width, height)
+    }
+
     fn view_controls(&self) -> Element<Message> {
-        let display_seconds = column![
-            text("Time").size(10),
-            if let Some(s) = self.seconds {
-                text(s).size(50)
-            } else {
-                text("---").size(50)
-            }
+        
+        let time_text = match self.game_state {
+            GameState::Ready => {
+                widget::text("---").size(50)
+            },
+            GameState::Running => {
+                widget::text(self.elapsed_seconds.unwrap()).size(50)
+            },
+            GameState::Stopped { is_won: _ } => {
+                widget::text(self.elapsed_seconds.unwrap()).size(50)
+            },
+        };
+        let display_seconds = widget::column![
+            widget::text("Time").size(10),
+            time_text
         ]
         .align_items(Alignment::Center);
 
-        let display_flags = column![
-            text("Flags").size(10),
-            if let Some(f) = self.flags {
-                text(f).size(50)
-            } else {
-                text("---").size(50)
-            }
+        let flags_text = match self.game_state {
+            GameState::Ready => {
+                widget::text("---").size(50)
+            },
+            GameState::Running => {
+                widget::text(self.remaining_flags).size(50)
+            },
+            GameState::Stopped { is_won: _} => {
+                widget::text(self.remaining_flags).size(50)
+            },
+        };
+        let display_flags = widget::column![
+            widget::text("Flags").size(10),
+            flags_text
         ]
         .align_items(Alignment::Center);
 
-        row![
-            button(Self::REFRESH_BTN_CHAR)
+        widget::row![
+            widget::button(Self::REFRESH_BTN_CHAR)
                 .on_press(Message::Reset)
                 .style(theme::Button::Primary),
             display_seconds,
             display_flags,
-            button(Self::SETTINGS_BTN_CHAR)
+            widget::button(Self::SETTINGS_BTN_CHAR)
                 .on_press(Message::Settings)
                 .style(theme::Button::Primary),
-            button(Self::ABOUT_BTN_CHAR)
+            widget::button(Self::ABOUT_BTN_CHAR)
                 .on_press(Message::Info)
                 .style(theme::Button::Primary),
         ]
         .padding(10)
         .spacing(20)
-        .align_items(Alignment::Center)
+        .align_items(Alignment::Start)
         .width(Length::Fill)
         .into()
     }
 
     fn view_field(&self) -> Element<Message> {
+        let (field_width, field_height) = self.desired_field_size();
         Canvas::new(self)
-            .width(Length::Fill)
-            .height(Length::Fill)
+            .width(field_width)
+            .height(field_height)
             .into()
     }
+
+    fn check_ready_to_running(&mut self) {
+        if let GameState::Ready = self.game_state {
+            self.game_state = GameState::Running;
+            self.elapsed_seconds = Some(0);
+            
+            // TODO: start timer
+        }
+    }
+    
+    fn game_over(&mut self, is_won: bool) {
+        self.game_state = GameState::Stopped{is_won};
+        // TODO: stop timer
+    }
+
 }
 
 impl canvas::Program<Message> for Minesweep {
@@ -273,16 +392,16 @@ impl canvas::Program<Message> for Minesweep {
 
     fn draw(
         &self,
-        state: &Interaction,
-        theme: &Theme,
+        _state: &Interaction,
+        _theme: &Theme,
         bounds: iced::Rectangle,
-        cursor: canvas::Cursor,
+        _cursor: canvas::Cursor,
     ) -> Vec<canvas::Geometry> {
         let field = self.field_cache.draw(bounds.size(), |frame| {
             // Set the background
             let background = Path::rectangle(Point::ORIGIN, frame.size());
             let background_color = Color::from_rgb8(0x40, 0x44, 0x4B);
-            frame.fill(&background, background_color.clone());
+            frame.fill(&background, background_color);
 
             // determine where to draw the spots
             let f_width = self.field.width() as f32 * Self::SPOT_SIZE;
@@ -308,17 +427,12 @@ impl canvas::Program<Message> for Minesweep {
                 };
                 
                 match spot.state {
-                    minefield_rs::SpotState::HiddenEmpty { neighboring_mines } => {
+                    minefield_rs::SpotState::HiddenEmpty { neighboring_mines: _ } => {
                         frame.fill_rectangle(
                             p,
                             Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
                             foreground_color,
                         );
-                        frame.fill_text(Text {
-                            content: format!("{}", neighboring_mines),
-                            position: text.position,
-                            ..text
-                        });
                     },
                     minefield_rs::SpotState::HiddenMine => {
                         frame.fill_rectangle(
@@ -326,22 +440,8 @@ impl canvas::Program<Message> for Minesweep {
                             Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
                             foreground_color,
                         );
-                        frame.fill_text(".");
                     },
-                    minefield_rs::SpotState::FlaggedEmpty { neighboring_mines: _ } => {
-                        frame.fill_rectangle(
-                            p,
-                            Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
-                            foreground_color,
-                        );
-                        frame.fill_text(Text {
-                            content: format!("{}", Self::FLAG_CHAR),
-                            position: text.position,
-                            color: Self::FLAG_COLOR_CORRECT,
-                            ..text
-                        });
-                    },
-                    minefield_rs::SpotState::FlaggedMine => {
+                    minefield_rs::SpotState::FlaggedEmpty { neighboring_mines: _ } | minefield_rs::SpotState::FlaggedMine => {
                         frame.fill_rectangle(
                             p,
                             Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
@@ -409,10 +509,10 @@ enum GameState {
     Ready,
 
     /// Game is running
-    Running { seconds: u32, flags_placed: u32 },
+    Running,
 
     /// Game is stopped, and was either won (`true`), or lost (`false`)
-    Stopped { is_won: bool, seconds: u32, flags_placed: u32}
+    Stopped { is_won: bool }
 }
 
 impl Default for GameState {

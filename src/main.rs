@@ -13,6 +13,7 @@ pub fn main() -> iced::Result {
         antialiasing: true,
         window: window::Settings {
             position: window::Position::Centered,
+            resizable: false,
             ..window::Settings::default()
         },
         ..Settings::default()
