@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 iced = { version = "0.8", features = ["canvas", "tokio", "debug"] }
-iced_native ={ version = "0.9.1"}
+iced_native = { version = "0.9.1" }
 tokio = { version = "1.26", features = ["sync"] }
 log = { version = "0.4" }
 env_logger = { version = "0.10" }

@@ -1,5 +1,24 @@
 use std::time::{Duration, Instant};
-use iced::{Application, Theme, executor, widget::{self, canvas::{self, Cache, Path, Event, Cursor, event, Text, Frame, Stroke, LineCap, stroke, Fill}, Canvas}, Element, Alignment, theme, Length, Vector, Point, Color, Size, Rectangle, alignment, Command, mouse, Subscription, time};
+use iced::{
+    Application, 
+    Theme, 
+    executor, 
+    widget::{self, canvas::{self, Cache, Path, Event, Cursor, event, Text, Frame, Stroke, LineCap, stroke, Fill}, Canvas}, 
+    Element, 
+    Alignment, 
+    theme, 
+    Length, 
+    Vector, 
+    Point, 
+    Color, 
+    Size, 
+    Rectangle, 
+    alignment, 
+    Command, 
+    mouse, 
+    Subscription, 
+    time
+};
 use iced_native::{command, window};
 use minefield_rs::{Minefield, StepResult, FlagToggleResult};
 
@@ -43,7 +62,7 @@ impl Application for Minesweep {
 
     fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
         // TODO: load game config if available
-        let game_config = GameDifficulty::MEDIUM;
+        let game_config = GameDifficulty::EASY;
 
         let minesweep = Self {
             field: Minefield::new(game_config.width, game_config.height).with_mines(game_config.mines),
@@ -180,6 +199,7 @@ impl Application for Minesweep {
 
     fn view(&self) -> iced::Element<'_, Self::Message, iced::Renderer<Self::Theme>> {
         let content = widget::column![
+            // self.view_controls().explain(Color::WHITE),
             self.view_controls(),
             self.view_field()
         ]
@@ -187,7 +207,7 @@ impl Application for Minesweep {
         .height(Length::Fill)
         .align_items(Alignment::Start);
 
-        widget::container(content)
+        widget::container( content)
             .width(Length::Fill)
             .height(Length::Fill)
             .into()
@@ -329,39 +349,36 @@ impl Minesweep {
         .align_items(Alignment::Center);
 
         widget::row![
-            widget::column![
+            widget::row![
                 widget::button(Self::REFRESH_BTN_CHAR)
-                .on_press(Message::Reset)
-                .style(theme::Button::Primary),
-            ].padding(10)
-             .spacing(20)
-             .width(Length::Fill)
+                    .on_press(Message::Reset)
+                    .style(theme::Button::Primary),
+            ]
+             .width(Length::Shrink)
              .align_items(Alignment::Start),
             
             display_seconds,
             display_flags,
-
-            widget::column![
-                widget::row![
-                    widget::button(Self::SETTINGS_BTN_CHAR)
-                        .on_press(Message::Settings)
-                        .style(theme::Button::Primary),
-                    widget::button(Self::ABOUT_BTN_CHAR)
-                        .on_press(Message::Info)
-                        .style(theme::Button::Primary),
-                ].padding(10)
-                 .spacing(20)
-                 .width(Length::Fill)
-                 .align_items(Alignment::End),
-            ].width(Length::Fill)
-             .align_items(Alignment::Center),
-
+            
+            widget::row![
+                widget::horizontal_space(Length::Fill),
+                widget::button(Self::SETTINGS_BTN_CHAR)
+                    .on_press(Message::Settings)
+                    .style(theme::Button::Primary),
+                widget::button(Self::ABOUT_BTN_CHAR)
+                    .on_press(Message::Info)
+                    .style(theme::Button::Primary),
+            ]
+            //  .padding(10.0)
+             .spacing(10.0)
+             .width(Length::Fill)
+             .align_items(Alignment::End),
         ]
-        .padding(10)
-        .spacing(20)
-        .align_items(Alignment::End)
-        .width(Length::Fill)
-        .into()
+         .padding(10.0)
+         .spacing(10.0)
+         .align_items(Alignment::Center)
+         .width(Length::Fill)
+         .into()
     }
 
     fn view_field(&self) -> Element<Message> {
