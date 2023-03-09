@@ -1,5 +1,5 @@
 use std::time::{Duration, Instant};
-use iced::{Application, Theme, executor, widget::{self, canvas::{self, Cache, Path, Event, Cursor, event, Text}, Canvas}, Element, Alignment, theme, Length, Vector, Point, Color, Size, Rectangle, alignment, Command, mouse, Subscription, time};
+use iced::{Application, Theme, executor, widget::{self, canvas::{self, Cache, Path, Event, Cursor, event, Text, Frame, Stroke, LineCap, stroke, Fill}, Canvas}, Element, Alignment, theme, Length, Vector, Point, Color, Size, Rectangle, alignment, Command, mouse, Subscription, time};
 use iced_native::{command, window};
 use minefield_rs::{Minefield, StepResult, FlagToggleResult};
 
@@ -217,16 +217,17 @@ impl Minesweep {
     const TOOLBAR_HEIGHT: f32 = 100.0;
     const FIELD_PAD: f32 = 20.0;
     /// Size of spor on canvas, including padding
-    const SPOT_SIZE: f32 = 40.0;
+    const SPOT_SIZE: f32 = 30.0;
     /// Interior padding of spot
-    const SPOT_PAD: f32 = 3.0;
+    const SPOT_PAD: f32 = 1.0;
     const CELL_SIZE: f32 = Self::SPOT_SIZE - (Self::SPOT_PAD * 2.0);
 
 
-    const COLOR_RED: Color = Color::from_rgb(255.0, 0.0, 0.0);
-    const COLOR_LIGHT_RED: Color = Color::from_rgb(255.0, 128.0, 128.0);
-    const COLOR_GREEN: Color = Color::from_rgb(0.0, 255.0, 0.0);
-    const COLOR_GRAY: Color = Color::from_rgb(160.0, 160.0, 160.0);
+    const COLOR_RED: Color = Color::from_rgb(255.0 / 255.0, 0.0 / 255.0, 0.0 / 255.0);
+    const COLOR_LIGHT_RED: Color = Color::from_rgb(255.0 / 255.0, 128.0 / 255.0, 128.0 / 255.0);
+    const COLOR_GREEN: Color = Color::from_rgb(0.0 / 255.0, 255.0 / 255.0, 0.0 / 255.0);
+    const COLOR_GRAY: Color = Color::from_rgb(60.0 / 255.0, 60.0 / 255.0, 60.0 / 255.0);
+    const COLOR_DARK_GRAY: Color = Color::from_rgb(27.0 / 255.0, 27.0 / 255.0, 27.0 / 255.0);
 
     // const MINE_CHAR: &str = "☢";
     const MINE_CHAR: &str = "X";
@@ -244,12 +245,14 @@ impl Minesweep {
         Color::WHITE, Color::WHITE, Color::WHITE,
         Color::WHITE, Color::WHITE, Color::WHITE
     ];
-    const HIDDEN_SPOT_CHAR: &str = " ";
+    const REVEALED_SPOT_COLOR: Color = Self::COLOR_DARK_GRAY;
     const HIDDEN_SPOT_COLOR: Color = Self::COLOR_GRAY;
+
+    const READY_COLOR: Color = Self::COLOR_GRAY;
     const WON_COLOR: Color = Self::COLOR_GREEN;
     const LOST_COLOR: Color = Self::COLOR_RED;
-    const READY_COLOR: Color = Self::COLOR_GRAY;
-    const FLAG_COUNT_OK_COLOR: Color = Self::COLOR_GRAY;
+    
+    const FLAG_COUNT_OK_COLOR: Color = Color::WHITE;
     const FLAG_COUNT_ERR_COLOR: Color = Self::COLOR_LIGHT_RED;
 
     #[allow(dead_code)]
@@ -294,16 +297,22 @@ impl Minesweep {
             time_text
         ]
         .align_items(Alignment::Center);
+        
+        let color = if self.remaining_flags >= 0 {
+            Self::FLAG_COUNT_OK_COLOR
+        } else {
+            Self::FLAG_COUNT_ERR_COLOR
+        };
 
         let flags_text = match self.game_state {
             GameState::Ready => {
                 widget::text("---").size(50)
             },
             GameState::Running(_) => {
-                widget::text(self.remaining_flags).size(50)
+                widget::text(self.remaining_flags).size(50).style(color)
             },
             GameState::Stopped { is_won: _} => {
-                widget::text(self.remaining_flags).size(50)
+                widget::text(self.remaining_flags).size(50).style(color)
             },
         };
         let display_flags = widget::column![
@@ -344,14 +353,11 @@ impl Minesweep {
         if let GameState::Ready = self.game_state {
             self.elapsed_seconds = Duration::default();
             self.game_state = GameState::Running(Instant::now());
-            
-            // TODO: start timer
         }
     }
     
     fn game_over(&mut self, is_won: bool) {
         self.game_state = GameState::Stopped{is_won};
-        // TODO: stop timer
     }
 
 }
@@ -424,7 +430,7 @@ impl canvas::Program<Message> for Minesweep {
         let field = self.field_cache.draw(bounds.size(), |frame| {
             // Set the background
             let background = Path::rectangle(Point::ORIGIN, frame.size());
-            let background_color = Color::from_rgb8(0x40, 0x44, 0x4B);
+            let background_color = Self::REVEALED_SPOT_COLOR;
             frame.fill(&background, background_color);
 
             // determine where to draw the spots
@@ -441,10 +447,12 @@ impl canvas::Program<Message> for Minesweep {
                 let fy = (iy as f32 * Self::SPOT_SIZE) + Self::SPOT_PAD;
                 let p = origin_point + Vector::new(fx, fy);
                 
-                let text_position = Point::new(p.x + (Self::CELL_SIZE / 2.0), p.y + (Self::CELL_SIZE / 2.0));
+                let bounds = Rectangle::new(p, Size::new(Self::CELL_SIZE, Self::CELL_SIZE));
+                let rounded_rectangle_radius = 0.0;
+
                 let text = Text {
                     size: Self::CELL_SIZE,
-                    position: text_position,
+                    position: bounds.center(),
                     horizontal_alignment: alignment::Horizontal::Center,
                     vertical_alignment: alignment::Vertical::Center,
                     ..Text::default()
@@ -452,19 +460,11 @@ impl canvas::Program<Message> for Minesweep {
                 
                 match spot.state {
                     minefield_rs::SpotState::HiddenEmpty { neighboring_mines: _ } => {
-                        frame.fill_rectangle(
-                            p,
-                            Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
-                            Self::HIDDEN_SPOT_COLOR,
-                        );
+                        draw_rounded_rectangle(rounded_rectangle_radius, Self::HIDDEN_SPOT_COLOR, bounds, frame);
                     },
                     minefield_rs::SpotState::HiddenMine => {
-                        frame.fill_rectangle(
-                            p,
-                            Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
-                            Self::HIDDEN_SPOT_COLOR,
-                        );
-
+                        draw_rounded_rectangle(rounded_rectangle_radius, Self::HIDDEN_SPOT_COLOR, bounds, frame);
+                        
                         if let GameState::Stopped { is_won: _ } = self.game_state {
                             frame.fill_text(Text {
                                 content: format!("{}", Self::MINE_CHAR),
@@ -475,12 +475,8 @@ impl canvas::Program<Message> for Minesweep {
                         }
                     },
                     minefield_rs::SpotState::FlaggedEmpty { neighboring_mines: _ } => {
-                        frame.fill_rectangle(
-                            p,
-                            Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
-                            Self::HIDDEN_SPOT_COLOR,
-                        );
-
+                        draw_rounded_rectangle(rounded_rectangle_radius, Self::HIDDEN_SPOT_COLOR, bounds, frame);
+                        
                         let color = match self.game_state {
                             GameState::Ready | GameState::Running(_) => {
                                 Self::FLAG_COLOR_CORRECT
@@ -498,11 +494,7 @@ impl canvas::Program<Message> for Minesweep {
                         });
                     },
                     minefield_rs::SpotState::FlaggedMine => {
-                        frame.fill_rectangle(
-                            p,
-                            Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
-                            Self::HIDDEN_SPOT_COLOR,
-                        );
+                        draw_rounded_rectangle(rounded_rectangle_radius, Self::HIDDEN_SPOT_COLOR, bounds, frame);
 
                         frame.fill_text(Text {
                             content: format!("{}", Self::FLAG_CHAR),
@@ -512,11 +504,7 @@ impl canvas::Program<Message> for Minesweep {
                         });
                     },
                     minefield_rs::SpotState::RevealedEmpty { neighboring_mines } => {
-                        frame.fill_rectangle(
-                            p,
-                            Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
-                            background_color,
-                        );
+                        draw_rounded_rectangle(rounded_rectangle_radius, Self::REVEALED_SPOT_COLOR, bounds, frame);
                         
                         frame.fill_text(Text {
                             content: format!("{}", Self::EMPTY_SPOT_CHARS[neighboring_mines as usize]),
@@ -526,11 +514,8 @@ impl canvas::Program<Message> for Minesweep {
                         });
                     },
                     minefield_rs::SpotState::ExplodedMine => {
-                        frame.fill_rectangle(
-                            p,
-                            Size::new(Self::CELL_SIZE, Self::CELL_SIZE),
-                            background_color,
-                        );
+                        draw_rounded_rectangle(rounded_rectangle_radius, Self::REVEALED_SPOT_COLOR, bounds, frame);
+                        
                         frame.fill_text(Text {
                             content: format!("{}", Self::MINE_EXPLODED_CHAR),
                             position: text.position,
@@ -541,6 +526,39 @@ impl canvas::Program<Message> for Minesweep {
                 }
             }
         });
+
+
+        fn draw_rounded_rectangle(radius: f32, fill: Color, bounds: Rectangle, frame: &mut Frame) {
+            let s_position = Point::new(bounds.position().x + (radius / 2.0), bounds.position().y);
+            let s_size = Size::new(bounds.width - (radius * 1.0), bounds.height);
+
+            frame.fill_rectangle(
+                s_position,
+                s_size,
+                fill,
+            );
+
+            let wide_stroke = || -> Stroke {
+                Stroke {
+                    width: radius,
+                    style: stroke::Style::Solid(fill),
+                    line_cap: LineCap::Round,
+                    ..Stroke::default()
+                }
+            };
+
+            let left_line = Path::line(
+                Point::new(bounds.position().x + (radius / 2.0), bounds.position().y + (radius / 2.0)), 
+                Point::new(bounds.position().x + (radius / 2.0), bounds.position().y + bounds.height - (radius / 2.0))
+            );
+            frame.stroke(&left_line, wide_stroke());
+
+            let right_line = Path::line(
+                Point::new(bounds.position().x + (radius / 2.0) + s_size.width, bounds.position().y + (radius / 2.0)), 
+                Point::new(bounds.position().x + (radius / 2.0) + s_size.width, bounds.position().y + bounds.height - (radius / 2.0))
+            );
+            frame.stroke(&right_line, wide_stroke());
+        }
 
         vec![field]
     }
