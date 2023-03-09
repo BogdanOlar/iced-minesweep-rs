@@ -43,7 +43,7 @@ impl Application for Minesweep {
 
     fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
         // TODO: load game config if available
-        let game_config = GameConfig::default();
+        let game_config = GameDifficulty::MEDIUM;
 
         let minesweep = Self {
             field: Minefield::new(game_config.width, game_config.height).with_mines(game_config.mines),
@@ -183,11 +183,13 @@ impl Application for Minesweep {
             self.view_controls(),
             self.view_field()
         ]
+        .width(Length::Fill)
+        .height(Length::Fill)
         .align_items(Alignment::Start);
 
         widget::container(content)
-            .width(Length::Shrink)
-            .height(Length::Shrink)
+            .width(Length::Fill)
+            .height(Length::Fill)
             .into()
     }
     
@@ -214,7 +216,7 @@ impl Minesweep {
     // const SETTINGS_BTN_CHAR: &str = "🛠";
     // const ABOUT_BTN_CHAR: &str = "ℹ";
     
-    const TOOLBAR_HEIGHT: f32 = 100.0;
+    const TOOLBAR_HEIGHT: f32 = 70.0;
     const FIELD_PAD: f32 = 20.0;
     /// Size of spor on canvas, including padding
     const SPOT_SIZE: f32 = 30.0;
@@ -280,25 +282,29 @@ impl Minesweep {
     }
 
     fn view_controls(&self) -> Element<Message> {
-        
+        let time_text_size = 40;
         let time_text = match self.game_state {
             GameState::Ready => {
-                widget::text("---").size(50)
+                widget::text("---").size(time_text_size)
             },
             GameState::Running(_) => {
-                widget::text(self.elapsed_seconds.as_secs()).size(50)
+                widget::text(self.elapsed_seconds.as_secs()).size(time_text_size)
             },
             GameState::Stopped { is_won: _ } => {
-                widget::text(self.elapsed_seconds.as_secs()).size(50)
+                widget::text(self.elapsed_seconds.as_secs()).size(time_text_size)
             },
         };
+
         let display_seconds = widget::column![
             widget::text("Time").size(10),
             time_text
         ]
+        // .width(Length::Fill)
         .align_items(Alignment::Center);
         
-        let color = if self.remaining_flags >= 0 {
+
+        let flags_text_size = 40;
+        let flags_text_color = if self.remaining_flags >= 0 {
             Self::FLAG_COUNT_OK_COLOR
         } else {
             Self::FLAG_COUNT_ERR_COLOR
@@ -306,37 +312,54 @@ impl Minesweep {
 
         let flags_text = match self.game_state {
             GameState::Ready => {
-                widget::text("---").size(50)
+                widget::text("---").size(flags_text_size)
             },
             GameState::Running(_) => {
-                widget::text(self.remaining_flags).size(50).style(color)
+                widget::text(self.remaining_flags).size(flags_text_size).style(flags_text_color)
             },
             GameState::Stopped { is_won: _} => {
-                widget::text(self.remaining_flags).size(50).style(color)
+                widget::text(self.remaining_flags).size(flags_text_size).style(flags_text_color)
             },
         };
         let display_flags = widget::column![
             widget::text("Flags").size(10),
             flags_text
         ]
+        // .width(Length::Fill)
         .align_items(Alignment::Center);
 
         widget::row![
-            widget::button(Self::REFRESH_BTN_CHAR)
+            widget::column![
+                widget::button(Self::REFRESH_BTN_CHAR)
                 .on_press(Message::Reset)
                 .style(theme::Button::Primary),
+            ].padding(10)
+             .spacing(20)
+             .width(Length::Fill)
+             .align_items(Alignment::Start),
+            
             display_seconds,
             display_flags,
-            widget::button(Self::SETTINGS_BTN_CHAR)
-                .on_press(Message::Settings)
-                .style(theme::Button::Primary),
-            widget::button(Self::ABOUT_BTN_CHAR)
-                .on_press(Message::Info)
-                .style(theme::Button::Primary),
+
+            widget::column![
+                widget::row![
+                    widget::button(Self::SETTINGS_BTN_CHAR)
+                        .on_press(Message::Settings)
+                        .style(theme::Button::Primary),
+                    widget::button(Self::ABOUT_BTN_CHAR)
+                        .on_press(Message::Info)
+                        .style(theme::Button::Primary),
+                ].padding(10)
+                 .spacing(20)
+                 .width(Length::Fill)
+                 .align_items(Alignment::End),
+            ].width(Length::Fill)
+             .align_items(Alignment::Center),
+
         ]
         .padding(10)
         .spacing(20)
-        .align_items(Alignment::Start)
+        .align_items(Alignment::End)
         .width(Length::Fill)
         .into()
     }
