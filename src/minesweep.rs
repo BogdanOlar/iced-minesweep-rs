@@ -219,7 +219,6 @@ impl Application for Minesweep {
         } else {
             Subscription::none()
         }
-
     }
 
     fn theme(&self) -> Theme {
@@ -357,11 +356,17 @@ impl Minesweep {
              .width(Length::Shrink)
              .align_items(Alignment::Start),
             
-            display_seconds,
-            display_flags,
-            
             widget::row![
                 widget::horizontal_space(Length::Fill),
+                display_seconds,
+                display_flags,
+                widget::horizontal_space(Length::Fill)
+            ]
+             .spacing(20.0)
+             .width(Length::Fill)
+             .align_items(Alignment::Center),
+            
+            widget::row![
                 widget::button(Self::SETTINGS_BTN_CHAR)
                     .on_press(Message::Settings)
                     .style(theme::Button::Primary),
@@ -369,9 +374,8 @@ impl Minesweep {
                     .on_press(Message::Info)
                     .style(theme::Button::Primary),
             ]
-            //  .padding(10.0)
              .spacing(10.0)
-             .width(Length::Fill)
+             .width(Length::Shrink)
              .align_items(Alignment::End),
         ]
          .padding(10.0)
