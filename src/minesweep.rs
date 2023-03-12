@@ -1,23 +1,8 @@
 use std::time::{Duration, Instant};
 use iced::{
-    Application, 
-    Theme, 
-    executor, 
-    widget::{self, canvas::{self, Cache, Path, Event, Cursor, event, Text, Frame, Stroke, LineCap, stroke, Fill}, Canvas}, 
-    Element, 
-    Alignment, 
-    theme, 
-    Length, 
-    Vector, 
-    Point, 
-    Color, 
-    Size, 
-    Rectangle, 
-    alignment, 
-    Command, 
-    mouse, 
-    Subscription, 
-    time
+    alignment, executor, mouse, theme, time,
+    widget::{self, canvas::{self, event, stroke, Cache, Path, Event, Cursor, Text, Frame, Stroke, LineCap }, Canvas}, 
+    Alignment, Application, Color, Command, Element, Length, Point, Rectangle, Size, Subscription, Theme, Vector, Font, 
 };
 use iced_native::{command, window};
 use minefield_rs::{Minefield, StepResult, FlagToggleResult};
@@ -157,22 +142,24 @@ impl Application for Minesweep {
                 Command::none()
             },
             Message::Info => {
-                // Testing code
+                // FIXME: Testing code
                 self.game_config = GameDifficulty::MEDIUM;
 
                 self.field = Minefield::new(self.game_config.width, self.game_config.height).with_mines(self.game_config.mines);
-                self.game_state = GameState::default();
+                self.game_state = GameState::Ready;
                 self.elapsed_seconds = Duration::default();
                 self.remaining_flags = self.game_config.mines as i64;
                 
                 let (width, height) = self.desired_window_size();
-        
+                
+                self.field_cache.clear();
+                
                 let command = Command::single(command::Action::Window(window::Action::Resize { width, height }));
         
                 command
             },
             Message::Settings => {
-                // Testing code
+                // FIXME: Testing code
                 self.game_config = GameDifficulty::HARD;
 
                 self.field = Minefield::new(self.game_config.width, self.game_config.height).with_mines(self.game_config.mines);
@@ -182,14 +169,16 @@ impl Application for Minesweep {
                 
                 let (width, height) = self.desired_window_size();
         
+                self.field_cache.clear();
+                
                 let command = Command::single(command::Action::Window(window::Action::Resize { width, height }));
         
                 command
             },
-            Message::Tick(now) => {
-                if let GameState::Running(last_tick) = &mut self.game_state {
-                    self.elapsed_seconds += now - *last_tick;
-                    *last_tick = now;
+            Message::Tick(new_tick) => {
+                if let GameState::Running(cur_tick) = &mut self.game_state {
+                    self.elapsed_seconds += new_tick - *cur_tick;
+                    *cur_tick = new_tick;
                 }
                 
                 Command::none()
@@ -199,6 +188,7 @@ impl Application for Minesweep {
 
     fn view(&self) -> iced::Element<'_, Self::Message, iced::Renderer<Self::Theme>> {
         let content = widget::column![
+            // TODO: remove commented out debug code
             // self.view_controls().explain(Color::WHITE),
             self.view_controls(),
             self.view_field()
@@ -228,6 +218,14 @@ impl Application for Minesweep {
 
 impl Minesweep {
     const APP_NAME: &str = "iced minesweep-rs";
+
+    // Fonts for mines and flags
+    const MINES_FLAGS_ICONS: Font = Font::External {
+        name: "Icons",
+        bytes: include_bytes!("../res/fonts/emoji-icon-font.ttf"),
+    };
+
+
     const REFRESH_BTN_CHAR: &str = "New";
     const SETTINGS_BTN_CHAR: &str = "Settings";
     const ABOUT_BTN_CHAR: &str = "About";
@@ -242,6 +240,7 @@ impl Minesweep {
     /// Interior padding of spot
     const SPOT_PAD: f32 = 1.0;
     const CELL_SIZE: f32 = Self::SPOT_SIZE - (Self::SPOT_PAD * 2.0);
+    const CELL_PAD: f32 = 8.0;
 
 
     const COLOR_RED: Color = Color::from_rgb(255.0 / 255.0, 0.0 / 255.0, 0.0 / 255.0);
@@ -250,14 +249,14 @@ impl Minesweep {
     const COLOR_GRAY: Color = Color::from_rgb(60.0 / 255.0, 60.0 / 255.0, 60.0 / 255.0);
     const COLOR_DARK_GRAY: Color = Color::from_rgb(27.0 / 255.0, 27.0 / 255.0, 27.0 / 255.0);
 
-    // const MINE_CHAR: &str = "☢";
-    const MINE_CHAR: &str = "X";
+    const MINE_CHAR: &str = "☢";
+    // const MINE_CHAR: &str = "X";
     const MINE_COLOR: Color = Self::COLOR_RED;
-    // const MINE_EXPLODED_CHAR: &str = "💥";
-    const MINE_EXPLODED_CHAR: &str = "#";
+    const MINE_EXPLODED_CHAR: &str = "💥";
+    // const MINE_EXPLODED_CHAR: &str = "#";
     const MINE_EXPLODED_COLOR: Color = Self::COLOR_RED;
-    // const FLAG_CHAR: &str = "⚐";
-    const FLAG_CHAR: &str = "f";
+    const FLAG_CHAR: &str = "⚐";
+    // const FLAG_CHAR: &str = "f";
     const FLAG_COLOR_CORRECT: Color = Self::COLOR_GREEN;
     const FLAG_COLOR_WRONG: Color = Self::COLOR_RED;
     const EMPTY_SPOT_CHARS: [&str; 9] = [" ", "1", "2", "3", "4", "5", "6", "7", "8"];
@@ -306,7 +305,7 @@ impl Minesweep {
             GameState::Ready => {
                 widget::text("---").size(time_text_size)
             },
-            GameState::Running(_) => {
+            GameState::Running(_) | GameState::Paused(_) => {
                 widget::text(self.elapsed_seconds.as_secs()).size(time_text_size)
             },
             GameState::Stopped { is_won: _ } => {
@@ -333,7 +332,7 @@ impl Minesweep {
             GameState::Ready => {
                 widget::text("---").size(flags_text_size)
             },
-            GameState::Running(_) => {
+            GameState::Running(_) | GameState::Paused(_) => {
                 widget::text(self.remaining_flags).size(flags_text_size).style(flags_text_color)
             },
             GameState::Stopped { is_won: _} => {
@@ -349,7 +348,8 @@ impl Minesweep {
 
         widget::row![
             widget::row![
-                widget::button(Self::REFRESH_BTN_CHAR)
+                // widget::button(widget::text(Self::REFRESH_BTN_CHAR).font(Self::ICONS).size(20))
+                widget::button(widget::text(Self::REFRESH_BTN_CHAR))
                     .on_press(Message::Reset)
                     .style(theme::Button::Primary),
             ]
@@ -514,6 +514,8 @@ impl canvas::Program<Message> for Minesweep {
                                 content: format!("{}", Self::MINE_CHAR),
                                 position: text.position,
                                 color: Self::MINE_COLOR,
+                                font: Self::MINES_FLAGS_ICONS,
+                                size: Self::CELL_SIZE - Self::CELL_PAD,
                                 ..text
                             });
                         }
@@ -522,7 +524,7 @@ impl canvas::Program<Message> for Minesweep {
                         draw_rounded_rectangle(rounded_rectangle_radius, Self::HIDDEN_SPOT_COLOR, bounds, frame);
                         
                         let color = match self.game_state {
-                            GameState::Ready | GameState::Running(_) => {
+                            GameState::Ready | GameState::Running(_) | GameState::Paused(_) => {
                                 Self::FLAG_COLOR_CORRECT
                             },
                             GameState::Stopped { is_won: _ } => {
@@ -534,6 +536,8 @@ impl canvas::Program<Message> for Minesweep {
                             content: format!("{}", Self::FLAG_CHAR),
                             position: text.position,
                             color,
+                            font: Self::MINES_FLAGS_ICONS,
+                            size: Self::CELL_SIZE - Self::CELL_PAD,
                             ..text
                         });
                     },
@@ -544,6 +548,8 @@ impl canvas::Program<Message> for Minesweep {
                             content: format!("{}", Self::FLAG_CHAR),
                             position: text.position,
                             color: Self::FLAG_COLOR_CORRECT,
+                            font: Self::MINES_FLAGS_ICONS,
+                            size: Self::CELL_SIZE - Self::CELL_PAD,
                             ..text
                         });
                     },
@@ -564,13 +570,14 @@ impl canvas::Program<Message> for Minesweep {
                             content: format!("{}", Self::MINE_EXPLODED_CHAR),
                             position: text.position,
                             color: Self::MINE_EXPLODED_COLOR,
+                            font: Self::MINES_FLAGS_ICONS,
+                            size: Self::CELL_SIZE - Self::CELL_PAD,
                             ..text
                         });
                     },
                 }
             }
         });
-
 
         fn draw_rounded_rectangle(radius: f32, fill: Color, bounds: Rectangle, frame: &mut Frame) {
             let s_position = Point::new(bounds.position().x + (radius / 2.0), bounds.position().y);
@@ -629,6 +636,9 @@ enum GameState {
 
     /// Game is running
     Running (Instant),
+
+    /// Game s paused at current time
+    Paused(Instant),
 
     /// Game is stopped, and was either won (`true`), or lost (`false`)
     Stopped { is_won: bool }
