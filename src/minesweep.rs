@@ -226,12 +226,18 @@ impl Minesweep {
     };
 
 
-    const REFRESH_BTN_CHAR: &str = "New";
-    const SETTINGS_BTN_CHAR: &str = "Settings";
-    const ABOUT_BTN_CHAR: &str = "About";
-    // const REFRESH_BTN_CHAR: &str = "🔄";
-    // const SETTINGS_BTN_CHAR: &str = "🛠";
-    // const ABOUT_BTN_CHAR: &str = "ℹ";
+    // Fonts for mines and flags
+    const COMMANDS_ICONS: Font = Font::External {
+        name: "Commands",
+        bytes: include_bytes!("../res/fonts/NotoEmoji-Regular.ttf"),
+    };
+
+    // const REFRESH_BTN_CHAR: &str = "New";
+    // const SETTINGS_BTN_CHAR: &str = "Settings";
+    // const ABOUT_BTN_CHAR: &str = "About";
+    const REFRESH_BTN_CHAR: &str = "🔄";
+    const SETTINGS_BTN_CHAR: &str = "🛠";
+    const ABOUT_BTN_CHAR: &str = "ℹ";
     
     const TOOLBAR_HEIGHT: f32 = 70.0;
     const FIELD_PAD: f32 = 20.0;
@@ -348,8 +354,7 @@ impl Minesweep {
 
         widget::row![
             widget::row![
-                // widget::button(widget::text(Self::REFRESH_BTN_CHAR).font(Self::ICONS).size(20))
-                widget::button(widget::text(Self::REFRESH_BTN_CHAR))
+                widget::button(widget::text(Self::REFRESH_BTN_CHAR).font(Self::COMMANDS_ICONS).size(20))
                     .on_press(Message::Reset)
                     .style(theme::Button::Primary),
             ]
@@ -367,10 +372,10 @@ impl Minesweep {
              .align_items(Alignment::Center),
             
             widget::row![
-                widget::button(Self::SETTINGS_BTN_CHAR)
+                widget::button(widget::text(Self::SETTINGS_BTN_CHAR).font(Self::MINES_FLAGS_ICONS))
                     .on_press(Message::Settings)
                     .style(theme::Button::Primary),
-                widget::button(Self::ABOUT_BTN_CHAR)
+                widget::button(widget::text(Self::ABOUT_BTN_CHAR).font(Self::COMMANDS_ICONS))
                     .on_press(Message::Info)
                     .style(theme::Button::Primary),
             ]

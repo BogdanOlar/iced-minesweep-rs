@@ -6,18 +6,20 @@ A rust implementation of the popular game, using the [iced](https://github.com/i
 
 ## TODO
 
-- [x] Linux
+- [ ] Linux
 - [ ] WASM
 - [ ] WASM touch display
 - [ ] Config
 - [ ] High scores
-- [x] Layout
+- [ ] Layout
 
 ## Build & run
 
 ### Desktop
 
 Prerequisites: `cargo` and `rustc` (see [installation instructions](https://www.rust-lang.org/tools/install))
+
+Build and run:
 
 ```bash
 git clone https://github.com/BogdanOlar/iced-minesweep-rs
