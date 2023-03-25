@@ -361,8 +361,13 @@ impl Application for Minesweep {
             Message::HighScore(rec) => {
                 match rec {
                     RecordHighScore::NameChanged(name) => {
-                        if let MainViewContent::EnterHighScore(d, s, _) = self.main_view {
-                            self.main_view = MainViewContent::EnterHighScore(d, s, name);
+                        if let MainViewContent::EnterHighScore(d, s, old_name) = self.main_view.clone() {
+                            // Enforce maximum name length
+                            if name.chars().count() < Self::MAX_HIGHSCORE_NAME_LEN {
+                                self.main_view = MainViewContent::EnterHighScore(d, s, name);
+                            } else {
+                                self.main_view = MainViewContent::EnterHighScore(d, s, old_name);
+                            }
                         }
                     },
                     RecordHighScore::RecordName => {
@@ -500,6 +505,7 @@ impl Minesweep {
 
     const MAX_HIGH_SCORES_PER_LEVEL: usize = 3;
     const DEFAULT_NAME: &str = "Anonymous";
+    const MAX_HIGHSCORE_NAME_LEN: usize = 32;
 
     #[allow(dead_code)]
     pub fn with_configs(mut self, game_config: GameConfig) -> Self {
