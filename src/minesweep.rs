@@ -1,4 +1,4 @@
-use std::{time::{Duration, Instant}, fmt::Display};
+use std::{time::{Duration, Instant}, fmt::Display, collections::BTreeMap};
 use iced::{
     alignment, executor, mouse, theme, time,
     widget::{self, canvas::{self, event, stroke, Cache, Path, Event, Cursor, Text, Frame, Stroke, LineCap }, Canvas, container}, 
@@ -14,6 +14,12 @@ pub enum Message {
 
     /// The info view has been requested
     Info,
+
+    /// The high scores view has been requested
+    HighScores,
+
+    /// A new high score needs to be recorded
+    HighScore(RecordHighScore),
 
     /// Messages related to game settings
     Settings(SettingsMessage),
@@ -57,6 +63,14 @@ pub enum SettingsMessage {
     Discard
 }
 
+#[derive(Debug, Clone)]
+pub enum RecordHighScore {
+    NameChanged(String),
+    RecordName,
+    Discard
+}
+
+#[derive(Debug, Clone)]
 enum MainViewContent {
     /// Show the game (minefield) view
     Game,
@@ -65,7 +79,13 @@ enum MainViewContent {
     Settings(GameDifficulty),
 
     /// Show the Info view
-    Info
+    Info,
+
+    /// Show the High Scores view
+    HighScores,
+
+    /// Show Record High Score view
+    EnterHighScore(DifficultyLevel, u64, String),
 }
 
 pub struct Minesweep {
@@ -89,6 +109,9 @@ pub struct Minesweep {
 
     /// The specifications of the current game (width, height, number of mines)
     game_config: GameConfig,
+
+    /// High Scores for each difficulty level `BTreeMap<DifficultyLevel, BTreeMap<seconds, player_name>>`
+    high_scores: BTreeMap<DifficultyLevel, BTreeMap<u64, String>>
 }
 
 impl Application for Minesweep {
@@ -100,6 +123,12 @@ impl Application for Minesweep {
     fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
         // TODO: load game config if available
         let game_config = GameDifficulty::EASY;
+        let mut high_scores = BTreeMap::new();
+
+        // DEBUG:
+        let mut easy_scores = BTreeMap::new();
+        easy_scores.insert(100, "Bogdan".to_string());
+        high_scores.insert(DifficultyLevel::Easy, easy_scores);
 
         let minesweep = Self {
             field: Minefield::new(game_config.width, game_config.height).with_mines(game_config.mines),
@@ -109,6 +138,7 @@ impl Application for Minesweep {
             game_config,
             elapsed_seconds: Duration::default(),
             remaining_flags: game_config.mines as i64,
+            high_scores
         };
         let (width, height) = minesweep.desired_window_size();
 
@@ -187,6 +217,7 @@ impl Application for Minesweep {
                 self.field = Minefield::new(self.game_config.width, self.game_config.height).with_mines(self.game_config.mines);
                 
                 self.game_state = GameState::Ready;
+                self.main_view = MainViewContent::Game;
                 self.elapsed_seconds = Duration::default();
                 self.remaining_flags = self.game_config.mines as i64;
 
@@ -308,6 +339,22 @@ impl Application for Minesweep {
                 }
             }
 
+            Message::HighScores => {
+                match self.main_view {
+                    MainViewContent::HighScores => {
+                        // Get back to the game
+                        self.resume_game();
+                        self.main_view = MainViewContent::Game;
+                    },
+                    _ => {
+                        self.pause_game();
+                        self.main_view = MainViewContent::HighScores;
+                    }
+                }
+
+                Command::none()
+            },
+
             Message::Tick(new_tick) => {
                 if let GameState::Running(cur_tick) = &mut self.game_state {
                     self.elapsed_seconds += new_tick - *cur_tick;
@@ -316,13 +363,33 @@ impl Application for Minesweep {
                 
                 Command::none()
             },
-            
-            
+            Message::HighScore(rec) => {
+                match rec {
+                    RecordHighScore::NameChanged(name) => {
+                        if let MainViewContent::EnterHighScore(d, s, _) = self.main_view {
+                            self.main_view = MainViewContent::EnterHighScore(d, s, name);
+                        }
+                    },
+                    RecordHighScore::RecordName => {
+                        if let MainViewContent::EnterHighScore(difficulty_level, seconds, name) = self.main_view.clone() {
+                            self.main_view = MainViewContent::HighScores;
+                            self.insert_high_score(difficulty_level, seconds, name);
+                        }
+                    },
+                    RecordHighScore::Discard => {
+                        if let MainViewContent::EnterHighScore(_, _, _) = self.main_view {
+                            self.main_view = MainViewContent::Game;
+                        }
+                    },
+                }
+
+                Command::none()
+            },
         }
     }
 
     fn view(&self) -> iced::Element<'_, Self::Message, iced::Renderer<Self::Theme>> {
-        let main_view = match self.main_view {
+        let main_view = match &self.main_view {
             MainViewContent::Game => {
                 self.view_field()
             },
@@ -331,6 +398,12 @@ impl Application for Minesweep {
             },
             MainViewContent::Info => {
                 self.view_info()
+            },
+            MainViewContent::HighScores => {
+                self.view_high_scores()
+            },
+            MainViewContent::EnterHighScore(difficulty_level, seconds, name) => {
+                self.view_record_high_score(*difficulty_level, *seconds, name)
             },
         };
 
@@ -390,6 +463,7 @@ impl Minesweep {
     const REFRESH_BTN_CHAR: &str = "🔄";
     const SETTINGS_BTN_CHAR: &str = "🛠";
     const ABOUT_BTN_CHAR: &str = "ℹ";
+    const HIGH_SCORES_CHAR: &str = "🏆";
     
     const TOOLBAR_HEIGHT: f32 = 70.0;
     const FIELD_PAD: f32 = 20.0;
@@ -432,6 +506,8 @@ impl Minesweep {
     
     const FLAG_COUNT_OK_COLOR: Color = Color::WHITE;
     const FLAG_COUNT_ERR_COLOR: Color = Self::COLOR_LIGHT_RED;
+
+    const MAX_HIGH_SCORES_PER_LEVEL: usize = 3;
 
     #[allow(dead_code)]
     pub fn with_configs(mut self, game_config: GameConfig) -> Self {
@@ -545,6 +621,9 @@ impl Minesweep {
                 widget::button(widget::text(Self::ABOUT_BTN_CHAR).font(Self::COMMANDS_ICONS))
                     .on_press(Message::Info)
                     .style(theme::Button::Primary),
+                widget::button(widget::text(Self::HIGH_SCORES_CHAR).font(Self::COMMANDS_ICONS))
+                    .on_press(Message::HighScores)
+                    .style(theme::Button::Primary),                    
             ]
              .spacing(10.0)
              .width(Length::Shrink)
@@ -685,6 +764,90 @@ impl Minesweep {
          .into()
     }
 
+    /// High Scores view
+    fn view_high_scores(&self) -> Element<Message> {
+        let mut content = widget::column![].align_items(Alignment::Start).spacing(10);
+        for (difficulty_level, scores) in &self.high_scores {
+            content = content.push(
+                widget::row![widget::text(difficulty_level.to_string()).font(Self::TEXT_FONT)],
+            );
+
+            for (seconds, name) in scores {
+                content = content.push(
+                    widget::row![
+                        widget::text(name.as_str()).size(15.0),
+                        widget::text(seconds.to_string()).size(15.0),
+                    ].padding(10).spacing(10)
+                );
+            }
+
+            content = content.push(widget::row![]);
+        }
+
+        content = content.push(
+            widget::column![
+                widget::row![
+                    widget::button("Ok")
+                        .on_press(Message::HighScores)
+                        .style(theme::Button::Primary),
+                ]
+                 .spacing(10.0)
+                 .width(Length::Shrink)
+                 .align_items(Alignment::End)
+            ]
+             .width(Length::Fill)
+             .align_items(Alignment::End)
+             .padding(20.0)
+        );
+
+        widget::column![
+            widget::scrollable(container(content).width(Length::Fill)),
+        ]
+         .padding(Self::FIELD_PAD)
+         .into()
+    }
+
+    fn view_record_high_score(&self, difficulty_level: DifficultyLevel, seconds: u64, name: &String) -> Element<Message> {
+        let record_hs_page = widget::column![
+            widget::text(difficulty_level.to_string()),
+            widget::row![
+                widget::text_input("Enter your name", &name, move |s| { 
+                    Message::HighScore(RecordHighScore::NameChanged(s))
+                }).on_submit(Message::HighScore(RecordHighScore::RecordName))
+            ]
+             .spacing(10.0)  
+        ].spacing(10.0);
+
+        widget::column![
+            record_hs_page
+             .height(Length::Fill)
+             .width(Length::Fill)
+            ,
+            widget::column![
+                widget::row![
+                    widget::button("Cancel")
+                        .on_press(Message::HighScore(RecordHighScore::Discard))
+                        .style(theme::Button::Primary),
+                    widget::button("Apply")
+                        .on_press(Message::HighScore(RecordHighScore::RecordName))
+                        .style(theme::Button::Primary),
+                ]
+                 .spacing(10.0)
+                 .width(Length::Shrink)
+                 .align_items(Alignment::End)
+            ]
+             .width(Length::Fill)
+             .align_items(Alignment::End)
+
+
+        ]
+         .align_items(Alignment::End)
+         .width(Length::Fill)
+         .spacing(10.0)
+         .padding(Self::FIELD_PAD)
+         .into()        
+    }
+
     fn check_ready_to_running(&mut self) {
         if let GameState::Ready = self.game_state {
             self.elapsed_seconds = Duration::default();
@@ -694,6 +857,69 @@ impl Minesweep {
     
     fn game_over(&mut self, is_won: bool) {
         self.game_state = GameState::Stopped{is_won};
+
+        if is_won {
+            let seconds = self.elapsed_seconds.as_secs();
+
+            match GameDifficulty::from_config(&self.game_config) {
+                GameDifficulty::Easy => {
+                    if self.is_high_score(DifficultyLevel::Easy, seconds) {
+                        dbg!(&seconds);
+                        self.main_view = MainViewContent::EnterHighScore(DifficultyLevel::Easy, seconds, String::new());
+                    }
+                },
+                GameDifficulty::Medium => {
+                    if self.is_high_score(DifficultyLevel::Medium, seconds) {
+                        dbg!(&seconds);
+                        self.main_view = MainViewContent::EnterHighScore(DifficultyLevel::Medium, seconds, String::new());
+                    }
+                },
+                GameDifficulty::Hard => {
+                    if self.is_high_score(DifficultyLevel::Hard, seconds) {
+                        dbg!(&seconds);
+                        self.main_view = MainViewContent::EnterHighScore(DifficultyLevel::Hard, seconds, String::new());
+                    }
+                },
+                GameDifficulty::Custom(_) => {},
+            }
+        
+        }
+    }
+
+    fn is_high_score(&self, level: DifficultyLevel, seconds: u64) -> bool {
+        if let Some(scores) = self.high_scores.get(&level)
+        {
+            if scores.len() >= Self::MAX_HIGH_SCORES_PER_LEVEL {
+                let max = scores
+                    .iter()
+                    .max_by(|a, b| a.1.cmp(&b.1))
+                    .map(|(k, _v)| k)
+                    .unwrap();
+
+                    // compare highest time with current time
+                    seconds < *max
+            } else {
+                // high scores list for this level is not full
+                true
+            }
+        } else {
+            // no recorded high scores for this level
+            true
+        }
+    }
+
+    fn insert_high_score(&mut self, difficulty_level: DifficultyLevel, seconds: u64, name: String) {
+        if let Some(scores) = self.high_scores.get_mut(&difficulty_level) {
+            scores.insert(seconds, name);
+            
+            while scores.len() > Self::MAX_HIGH_SCORES_PER_LEVEL {
+                scores.pop_last();
+            }
+        } else {
+            let mut scores = BTreeMap::new();
+            scores.insert(seconds, name);
+            self.high_scores.insert(difficulty_level, scores);
+        }
     }
 
     /// Pause the game, if it is running
@@ -711,6 +937,8 @@ impl Minesweep {
             self.game_state = GameState::Running(Instant::now())
         }
     }
+
+
 
 }
 
@@ -1012,6 +1240,23 @@ impl Display for GameDifficulty {
             GameDifficulty::Medium =>  write!(f, "{} (w:{}, h:{}, m:{})", "Medium", Self::MEDIUM.width, Self::MEDIUM.height, Self::MEDIUM.mines),
             GameDifficulty::Hard =>  write!(f, "{} (w:{}, h:{}, m:{})", "Hard", Self::HARD.width, Self::HARD.height, Self::HARD.mines),
             GameDifficulty::Custom(_) =>  write!(f, "{}", "Custom"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum DifficultyLevel {
+    Easy,
+    Medium,
+    Hard
+}
+
+impl Display for DifficultyLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DifficultyLevel::Easy => write!(f, "{}", "Easy"),
+            DifficultyLevel::Medium =>  write!(f, "{}", "Medium"),
+            DifficultyLevel::Hard =>  write!(f, "{}", "Hard"),
         }
     }
 }
