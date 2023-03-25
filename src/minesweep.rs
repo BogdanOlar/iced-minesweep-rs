@@ -440,7 +440,6 @@ impl Minesweep {
         bytes: include_bytes!("../res/fonts/emoji-icon-font.ttf"),
     };
 
-
     // Fonts for mines and flags
     const COMMANDS_ICONS: Font = Font::External {
         name: "Commands",
@@ -477,13 +476,10 @@ impl Minesweep {
     const COLOR_DARK_GRAY: Color = Color::from_rgb(27.0 / 255.0, 27.0 / 255.0, 27.0 / 255.0);
 
     const MINE_CHAR: &str = "☢";
-    // const MINE_CHAR: &str = "X";
     const MINE_COLOR: Color = Self::COLOR_RED;
     const MINE_EXPLODED_CHAR: &str = "💥";
-    // const MINE_EXPLODED_CHAR: &str = "#";
     const MINE_EXPLODED_COLOR: Color = Self::COLOR_RED;
     const FLAG_CHAR: &str = "⚐";
-    // const FLAG_CHAR: &str = "f";
     const FLAG_COLOR_CORRECT: Color = Self::COLOR_GREEN;
     const FLAG_COLOR_WRONG: Color = Self::COLOR_RED;
     const EMPTY_SPOT_CHARS: [&str; 9] = [" ", "1", "2", "3", "4", "5", "6", "7", "8"];
@@ -503,6 +499,7 @@ impl Minesweep {
     const FLAG_COUNT_ERR_COLOR: Color = Self::COLOR_LIGHT_RED;
 
     const MAX_HIGH_SCORES_PER_LEVEL: usize = 3;
+    const DEFAULT_NAME: &str = "Anonymous";
 
     #[allow(dead_code)]
     pub fn with_configs(mut self, game_config: GameConfig) -> Self {
@@ -560,7 +557,6 @@ impl Minesweep {
             time_text.style(text_color)
         ]
         .align_items(Alignment::Center);
-
 
         let flags_text_size = 40;
 
@@ -859,19 +855,16 @@ impl Minesweep {
             match GameDifficulty::from_config(&self.game_config) {
                 GameDifficulty::Easy => {
                     if self.is_high_score(DifficultyLevel::Easy, seconds) {
-                        dbg!(&seconds);
                         self.main_view = MainViewContent::EnterHighScore(DifficultyLevel::Easy, seconds, String::new());
                     }
                 },
                 GameDifficulty::Medium => {
                     if self.is_high_score(DifficultyLevel::Medium, seconds) {
-                        dbg!(&seconds);
                         self.main_view = MainViewContent::EnterHighScore(DifficultyLevel::Medium, seconds, String::new());
                     }
                 },
                 GameDifficulty::Hard => {
                     if self.is_high_score(DifficultyLevel::Hard, seconds) {
-                        dbg!(&seconds);
                         self.main_view = MainViewContent::EnterHighScore(DifficultyLevel::Hard, seconds, String::new());
                     }
                 },
@@ -904,6 +897,7 @@ impl Minesweep {
     }
 
     fn insert_high_score(&mut self, difficulty_level: DifficultyLevel, seconds: u64, name: String) {
+        let name = if name.len() > 0 { name } else { Self::DEFAULT_NAME.to_string() };
         if let Some(scores) = self.high_scores.get_mut(&difficulty_level) {
             scores.push(Score { name, seconds});
 
