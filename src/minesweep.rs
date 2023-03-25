@@ -174,6 +174,7 @@ impl Application for Minesweep {
                         match self.main_view {
                             MainViewContent::Settings(_) => {
                                 // Get back to the game
+                                self.resume_game();
                                 self.main_view = MainViewContent::Game;
 
                                 Command::none()
@@ -470,7 +471,6 @@ impl Minesweep {
             widget::text("Flags").size(10).style(text_color),
             flags_text
         ]
-        // .width(Length::Fill)
         .align_items(Alignment::Center);
 
         widget::row![
