@@ -1,7 +1,7 @@
 use std::{time::{Duration, Instant}, fmt::Display};
 use iced::{
     alignment, executor, mouse, theme, time,
-    widget::{self, canvas::{self, event, stroke, Cache, Path, Event, Cursor, Text, Frame, Stroke, LineCap }, Canvas}, 
+    widget::{self, canvas::{self, event, stroke, Cache, Path, Event, Cursor, Text, Frame, Stroke, LineCap }, Canvas, container}, 
     Alignment, Application, Color, Command, Element, Length, Point, Rectangle, Size, Subscription, Theme, Vector, Font, 
 };
 use iced_native::{command, window};
@@ -34,7 +34,7 @@ pub enum MinesweepMessage {
 }
 
 #[derive(Debug, Clone)]
-enum SettingsMessage {
+pub enum SettingsMessage {
     /// Show settings view
     Show,
 
@@ -195,7 +195,17 @@ impl Application for Minesweep {
                 Command::none()
             },
             Message::Info => {
-                // TODO: add info page (high scores and game info)
+                match self.main_view {
+                    MainViewContent::Info => {
+                        // Get back to the game
+                        self.resume_game();
+                        self.main_view = MainViewContent::Game;
+                    },
+                    _ => {
+                        self.pause_game();
+                        self.main_view = MainViewContent::Info;
+                    }
+                }
 
                 Command::none()
             },
@@ -371,9 +381,11 @@ impl Minesweep {
 
     // Fonts for text
     const TEXT_FONT: Font = Font::External {
-        name: "Commands",
+        name: "UbuntuText",
         bytes: include_bytes!("../res/fonts/Ubuntu-Light.ttf"),
     };
+
+    const LICESE_BYTES: &'static [u8] = include_bytes!("../LICENSE");
 
     const REFRESH_BTN_CHAR: &str = "🔄";
     const SETTINGS_BTN_CHAR: &str = "🛠";
@@ -636,9 +648,41 @@ impl Minesweep {
          .into()
     }
 
-    /// "About" view
+    /// Info/"About" view
     fn view_info(&self) -> Element<Message> {
-        todo!()
+        let license_text = match std::str::from_utf8(Self::LICESE_BYTES) {
+            Ok(x) => x,
+            Err(_) => "",
+        };
+
+        let content = widget::column![
+            widget::row![widget::text("About").font(Self::TEXT_FONT)], 
+            widget::row![widget::text("Copyright (c) 2023 Bogdan Olar").size(15.0)].padding(10),
+            widget::row![widget::text("https://github.com/BogdanOlar/iced-minesweep-rs").size(15.0)].padding(10),
+            widget::row![widget::text("License").font(Self::TEXT_FONT)], 
+            widget::row![widget::text(license_text).font(Self::TEXT_FONT).size(12.0)].padding(10), 
+            widget::column![
+                widget::row![
+                    widget::button("Ok")
+                        .on_press(Message::Info)
+                        .style(theme::Button::Primary),
+                ]
+                 .spacing(10.0)
+                 .width(Length::Shrink)
+                 .align_items(Alignment::End)
+            ]
+             .width(Length::Fill)
+             .align_items(Alignment::End)
+             .padding(20.0)
+        ]
+         .align_items(Alignment::Start)
+         .spacing(10);
+
+        widget::column![
+            widget::scrollable(container(content).width(Length::Fill)),
+        ]
+         .padding(Self::FIELD_PAD)
+         .into()
     }
 
     fn check_ready_to_running(&mut self) {
