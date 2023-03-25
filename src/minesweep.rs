@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use std::{time::{Duration, Instant}, fmt::Display};
 use iced::{
     alignment, executor, mouse, theme, time,
     widget::{self, canvas::{self, event, stroke, Cache, Path, Event, Cursor, Text, Frame, Stroke, LineCap }, Canvas}, 
@@ -11,7 +11,9 @@ use minefield_rs::{Minefield, StepResult, FlagToggleResult};
 pub enum Message {
     Reset,
     Info,
-    Settings,
+    /// Messages related to game settings
+    Settings(SettingsMessage),
+    /// Messages related to playing the game
     Minesweep { message: MinesweepMessage },
     Tick(Instant),
 }
@@ -24,12 +26,31 @@ pub enum MinesweepMessage {
     Flag{x: u16, y: u16},
 }
 
+#[derive(Debug, Clone)]
+enum SettingsMessage {
+    Show,
+    Set(GameDifficulty),
+    Picked(GameDifficulty),
+    ConfigWidth(u16),
+    ConfigHeight(u16),
+    ConfigMines(u32),
+    Discard
+}
+
+enum MainViewContent {
+    Game,
+    Settings(GameDifficulty),
+    Info
+}
+
 pub struct Minesweep {
     /// Model
     field: Minefield,
 
     /// View: a cache of the canvas holding the minefield. A redraw can be forced on it by calling `field_cache.clear()`
     field_cache: Cache,
+
+    main_view: MainViewContent,
 
     game_state: GameState,
     
@@ -52,6 +73,7 @@ impl Application for Minesweep {
         let minesweep = Self {
             field: Minefield::new(game_config.width, game_config.height).with_mines(game_config.mines),
             field_cache: Cache::default(),
+            main_view: MainViewContent::Game,
             game_state: GameState::default(),
             game_config,
             elapsed_seconds: Duration::default(),
@@ -142,39 +164,108 @@ impl Application for Minesweep {
                 Command::none()
             },
             Message::Info => {
-                // FIXME: Testing code
-                self.game_config = GameDifficulty::MEDIUM;
+                // TODO: add info page (high scores and game info)
 
-                self.field = Minefield::new(self.game_config.width, self.game_config.height).with_mines(self.game_config.mines);
-                self.game_state = GameState::Ready;
-                self.elapsed_seconds = Duration::default();
-                self.remaining_flags = self.game_config.mines as i64;
-                
-                let (width, height) = self.desired_window_size();
-                
-                self.field_cache.clear();
-                
-                let command = Command::single(command::Action::Window(window::Action::Resize { width, height }));
-        
-                command
+                Command::none()
             },
-            Message::Settings => {
-                // FIXME: Testing code
-                self.game_config = GameDifficulty::HARD;
+            Message::Settings(settings_message) => {
+                match settings_message {
+                    SettingsMessage::Show => {
+                        match self.main_view {
+                            MainViewContent::Settings(_) => {
+                                // Get back to the game
+                                self.main_view = MainViewContent::Game;
 
-                self.field = Minefield::new(self.game_config.width, self.game_config.height).with_mines(self.game_config.mines);
-                self.game_state = GameState::default();
-                self.elapsed_seconds = Duration::default();
-                self.remaining_flags = self.game_config.mines as i64;
+                                Command::none()
+                            },
+                            _ => {
+                                self.pause_game();
+                                self.main_view = MainViewContent::Settings(GameDifficulty::from_config(&self.game_config));
                 
-                let (width, height) = self.desired_window_size();
-        
-                self.field_cache.clear();
+                                Command::none()
+                            }
+                        }
+                    },
+                    SettingsMessage::Set(game_difficulty) => {
+                        self.game_config = game_difficulty.to_config();
+
+                        self.field = Minefield::new(self.game_config.width, self.game_config.height).with_mines(self.game_config.mines);
+                        self.game_state = GameState::Ready;
+                        self.main_view = MainViewContent::Game;
+                        self.elapsed_seconds = Duration::default();
+                        self.remaining_flags = self.game_config.mines as i64;
+                        
+                        let (width, height) = self.desired_window_size();
+                        
+                        self.field_cache.clear();
+                        
+                        let command = Command::single(command::Action::Window(window::Action::Resize { width, height }));
                 
-                let command = Command::single(command::Action::Window(window::Action::Resize { width, height }));
+                        command
+                    },
+                    SettingsMessage::Picked(gdif) => {
+                        self.main_view = MainViewContent::Settings(gdif);
+
+                        Command::none()
+                    },
+                    SettingsMessage::Discard => {
+                        match self.main_view {
+                            MainViewContent::Settings(_) => {
+                                self.main_view = MainViewContent::Game;
+                                self.resume_game();
         
-                command
-            },
+                                Command::none()
+                            },
+                            _ => {
+                                Command::none()
+                            }
+                        }
+                    },
+                    SettingsMessage::ConfigWidth(width) => {
+                        if let MainViewContent::Settings(game_difficulty) = self.main_view {
+                            if let GameDifficulty::Custom(game_config) = game_difficulty {
+                                self.main_view = MainViewContent::Settings(GameDifficulty::Custom(
+                                    GameConfig { 
+                                        width, 
+                                        height: game_config.height,
+                                        mines: game_config.mines
+                                    }
+                                ))
+                            }
+                        }
+                        Command::none()
+                    },
+                    SettingsMessage::ConfigHeight(height) => {
+                        if let MainViewContent::Settings(game_difficulty) = self.main_view {
+                            if let GameDifficulty::Custom(game_config) = game_difficulty {
+                                self.main_view = MainViewContent::Settings(GameDifficulty::Custom(
+                                    GameConfig { 
+                                        width: game_config.width,
+                                        height, 
+                                        mines: game_config.mines
+                                    }
+                                ))
+                            }
+                        }
+                        Command::none()
+                    },
+                    SettingsMessage::ConfigMines(mines) => {
+                        if let MainViewContent::Settings(game_difficulty) = self.main_view {
+                            if let GameDifficulty::Custom(game_config) = game_difficulty {
+                                self.main_view = MainViewContent::Settings(GameDifficulty::Custom(
+                                    GameConfig { 
+                                        width: game_config.width,
+                                        height: game_config.height,
+                                        mines, 
+                                    }
+                                ))
+                            }
+                        }
+                        Command::none()
+                    },
+                }
+            }
+
             Message::Tick(new_tick) => {
                 if let GameState::Running(cur_tick) = &mut self.game_state {
                     self.elapsed_seconds += new_tick - *cur_tick;
@@ -183,21 +274,33 @@ impl Application for Minesweep {
                 
                 Command::none()
             },
+            
+            
         }
     }
 
     fn view(&self) -> iced::Element<'_, Self::Message, iced::Renderer<Self::Theme>> {
+        let main_view = match self.main_view {
+            MainViewContent::Game => {
+                self.view_field()
+            },
+            MainViewContent::Settings(game_difficulty) => {
+                self.view_settings(&game_difficulty)
+            },
+            MainViewContent::Info => todo!(),
+        };
+
         let content = widget::column![
             // TODO: remove commented out debug code
             // self.view_controls().explain(Color::WHITE),
             self.view_controls(),
-            self.view_field()
+            main_view
         ]
         .width(Length::Fill)
         .height(Length::Fill)
         .align_items(Alignment::Start);
 
-        widget::container( content)
+        widget::container(content)
             .width(Length::Fill)
             .height(Length::Fill)
             .into()
@@ -232,9 +335,12 @@ impl Minesweep {
         bytes: include_bytes!("../res/fonts/NotoEmoji-Regular.ttf"),
     };
 
-    // const REFRESH_BTN_CHAR: &str = "New";
-    // const SETTINGS_BTN_CHAR: &str = "Settings";
-    // const ABOUT_BTN_CHAR: &str = "About";
+    // Fonts for text
+    const TEXT_FONT: Font = Font::External {
+        name: "Commands",
+        bytes: include_bytes!("../res/fonts/Ubuntu-Light.ttf"),
+    };
+
     const REFRESH_BTN_CHAR: &str = "🔄";
     const SETTINGS_BTN_CHAR: &str = "🛠";
     const ABOUT_BTN_CHAR: &str = "ℹ";
@@ -306,6 +412,18 @@ impl Minesweep {
     }
 
     fn view_controls(&self) -> Element<Message> {
+        let text_color = match self.game_state {
+            GameState::Ready => Self::READY_COLOR,
+            GameState::Running(_) => Color::WHITE,
+            GameState::Paused(_) => Self::READY_COLOR,
+            GameState::Stopped { is_won } => {
+                match is_won {
+                    true => Self::WON_COLOR,
+                    false => Self::LOST_COLOR,
+                }
+            },
+        };
+
         let time_text_size = 40;
         let time_text = match self.game_state {
             GameState::Ready => {
@@ -320,33 +438,36 @@ impl Minesweep {
         };
 
         let display_seconds = widget::column![
-            widget::text("Time").size(10),
-            time_text
+            widget::text("Time").size(10).style(text_color),
+            time_text.style(text_color)
         ]
-        // .width(Length::Fill)
         .align_items(Alignment::Center);
         
 
         let flags_text_size = 40;
-        let flags_text_color = if self.remaining_flags >= 0 {
-            Self::FLAG_COUNT_OK_COLOR
-        } else {
-            Self::FLAG_COUNT_ERR_COLOR
-        };
-
+    
         let flags_text = match self.game_state {
             GameState::Ready => {
-                widget::text("---").size(flags_text_size)
+                widget::text("---").size(flags_text_size).style(text_color)
             },
-            GameState::Running(_) | GameState::Paused(_) => {
+            GameState::Running(_) => {
+                let flags_text_color = if self.remaining_flags >= 0 {
+                    Self::FLAG_COUNT_OK_COLOR
+                } else {
+                    Self::FLAG_COUNT_ERR_COLOR
+                };
+
                 widget::text(self.remaining_flags).size(flags_text_size).style(flags_text_color)
+            },
+            GameState::Paused(_) => {
+                widget::text(self.remaining_flags).size(flags_text_size).style(text_color)
             },
             GameState::Stopped { is_won: _} => {
-                widget::text(self.remaining_flags).size(flags_text_size).style(flags_text_color)
+                widget::text(self.remaining_flags).size(flags_text_size).style(text_color)
             },
         };
         let display_flags = widget::column![
-            widget::text("Flags").size(10),
+            widget::text("Flags").size(10).style(text_color),
             flags_text
         ]
         // .width(Length::Fill)
@@ -373,7 +494,7 @@ impl Minesweep {
             
             widget::row![
                 widget::button(widget::text(Self::SETTINGS_BTN_CHAR).font(Self::MINES_FLAGS_ICONS))
-                    .on_press(Message::Settings)
+                    .on_press(Message::Settings(SettingsMessage::Show))
                     .style(theme::Button::Primary),
                 widget::button(widget::text(Self::ABOUT_BTN_CHAR).font(Self::COMMANDS_ICONS))
                     .on_press(Message::Info)
@@ -398,6 +519,87 @@ impl Minesweep {
             .into()
     }
 
+    fn view_settings(&self, game_difficulty: &GameDifficulty) -> Element<Message> {
+        let mut settings_page = widget::column![
+            widget::text("Game Difficulty"),
+            widget::pick_list(GameDifficulty::ALL, Some(*game_difficulty), |x| { Message::Settings(SettingsMessage::Picked(x)) })    
+        ].spacing(10.0);
+            
+        if let GameDifficulty::Custom(game_config) = game_difficulty {
+            let width = game_config.width;
+            let height = game_config.height;
+            let mines = game_config.mines;
+
+            let custom_game = widget::column![
+                widget::text("Custom Game"),
+                widget::row![
+                    widget::text("Width:"),
+                    widget::text_input("", game_config.width.to_string().as_str(), move |s| { 
+                        if let Ok(i) = u16::from_str_radix(&s, 10) {
+                            Message::Settings(SettingsMessage::ConfigWidth(i)) 
+                        } else {
+                            Message::Settings(SettingsMessage::ConfigWidth(width)) 
+                        }
+                    })
+                ]
+                 .spacing(10.0),
+                widget::row![
+                    widget::text("Height:"),
+                    widget::text_input("", game_config.height.to_string().as_str(), move |s| { 
+                        if let Ok(i) = u16::from_str_radix(&s, 10) {
+                            Message::Settings(SettingsMessage::ConfigHeight(i)) 
+                        } else {
+                            Message::Settings(SettingsMessage::ConfigHeight(height)) 
+                        }
+                    })
+                ]
+                 .spacing(10.0),
+                widget::row![
+                    widget::text("Mines:"),
+                    widget::text_input("", game_config.mines.to_string().as_str(), move |s| { 
+                        if let Ok(i) = u32::from_str_radix(&s, 10) {
+                            Message::Settings(SettingsMessage::ConfigMines(i)) 
+                        } else {
+                            Message::Settings(SettingsMessage::ConfigMines(mines)) 
+                        }
+                    })
+                ]
+                 .spacing(10.0),
+            ].spacing(10.0);
+
+            settings_page = settings_page.push(custom_game);
+        }
+
+        widget::column![
+            settings_page
+             .height(Length::Fill)
+             .width(Length::Fill)
+            ,
+            widget::column![
+                widget::row![
+                    widget::button("Cancel")
+                        .on_press(Message::Settings(SettingsMessage::Discard))
+                        .style(theme::Button::Primary),
+                    widget::button("Apply")
+                        .on_press(Message::Settings(SettingsMessage::Set(*game_difficulty)))
+                        .style(theme::Button::Primary),
+                ]
+                 .spacing(10.0)
+                 .width(Length::Shrink)
+                 .align_items(Alignment::End)
+            ]
+             .width(Length::Fill)
+             .align_items(Alignment::End)
+
+
+        ]
+         .align_items(Alignment::End)
+         .width(Length::Fill)
+         .spacing(10.0)
+         .padding(Self::FIELD_PAD)
+         .into()
+    }
+
     fn check_ready_to_running(&mut self) {
         if let GameState::Ready = self.game_state {
             self.elapsed_seconds = Duration::default();
@@ -407,6 +609,22 @@ impl Minesweep {
     
     fn game_over(&mut self, is_won: bool) {
         self.game_state = GameState::Stopped{is_won};
+    }
+
+    /// Pause the game, if it is running
+    fn pause_game(&mut self) {
+        if let GameState::Running(i) = self.game_state {
+            let now = Instant::now();
+            self.elapsed_seconds += now - i;
+            self.game_state = GameState::Paused(now)
+        }
+    }
+
+    /// Resume the game, if it is paused
+    fn resume_game(&mut self) {
+        if let GameState::Paused(i) = self.game_state {
+            self.game_state = GameState::Running(Instant::now())
+        }
     }
 
 }
@@ -622,9 +840,6 @@ impl canvas::Program<Message> for Minesweep {
 
 pub enum Interaction {
     None,
-    Drawing,
-    Erasing,
-    Panning { translation: Vector, start: Point },
 }
 
 impl Default for Interaction {
@@ -668,17 +883,20 @@ impl Default for GameConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GameDifficulty {
     Easy,
     Medium,
     Hard,
+    Custom(GameConfig)
 }
 
 impl GameDifficulty {
+    pub const ALL:&[GameDifficulty] = &[Self::Easy, Self::Medium, Self::Hard, Self::Custom(Self::DEFAULT_CUSTOM)];
     pub const EASY: GameConfig = GameConfig { width: 10, height: 10, mines: 10 };
     pub const MEDIUM: GameConfig = GameConfig { width: 16, height: 16, mines: 40 };
     pub const HARD: GameConfig = GameConfig { width: 30, height: 16, mines: 99 };
+    pub const DEFAULT_CUSTOM: GameConfig = GameConfig{ width: 45, height: 24, mines: 150 };
 
     pub fn from_config(config: &GameConfig) -> Self {
         if *config == Self::EASY {
@@ -688,7 +906,27 @@ impl GameDifficulty {
         } else if *config == Self::HARD {
             Self::Hard
         } else {
-            unreachable!()
+            Self::Custom(*config)
+        }
+    }
+
+    pub fn to_config(&self) -> GameConfig {
+        match self {
+            GameDifficulty::Easy => Self::EASY,
+            GameDifficulty::Medium => Self::MEDIUM,
+            GameDifficulty::Hard => Self::HARD,
+            GameDifficulty::Custom(gc) => *gc,
+        }
+    }
+}
+
+impl Display for GameDifficulty {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GameDifficulty::Easy => write!(f, "{} (w:{}, h:{}, m:{})", "Easy", Self::EASY.width, Self::EASY.height, Self::EASY.mines),
+            GameDifficulty::Medium =>  write!(f, "{} (w:{}, h:{}, m:{})", "Medium", Self::MEDIUM.width, Self::MEDIUM.height, Self::MEDIUM.mines),
+            GameDifficulty::Hard =>  write!(f, "{} (w:{}, h:{}, m:{})", "Hard", Self::HARD.width, Self::HARD.height, Self::HARD.mines),
+            GameDifficulty::Custom(_) =>  write!(f, "{}", "Custom"),
         }
     }
 }

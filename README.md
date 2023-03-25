@@ -9,7 +9,7 @@ A rust implementation of the popular game, using the [iced](https://github.com/i
 - [ ] Linux
 - [ ] WASM
 - [ ] WASM touch display
-- [ ] Config
+- [x] Config
 - [ ] High scores
 - [ ] Layout
 
