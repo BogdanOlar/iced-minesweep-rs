@@ -9,12 +9,19 @@ use minefield_rs::{Minefield, StepResult, FlagToggleResult};
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    /// Restart the game
     Reset,
+
+    /// The info view has been requested
     Info,
+
     /// Messages related to game settings
     Settings(SettingsMessage),
+    
     /// Messages related to playing the game
-    Minesweep { message: MinesweepMessage },
+    Minesweep(MinesweepMessage),
+    
+    /// Message which informs us that a second has passed
     Tick(Instant),
 }
 
@@ -28,18 +35,36 @@ pub enum MinesweepMessage {
 
 #[derive(Debug, Clone)]
 enum SettingsMessage {
+    /// Show settings view
     Show,
+
+    /// Apply the game configuration specified in the settings view
     Set(GameDifficulty),
+
+    /// A new game difficulty has been picked, but not yet applied
     Picked(GameDifficulty),
+
+    /// A new custom width has been entered, but not yet applied
     ConfigWidth(u16),
+    
+    /// A new custom height has been entered, but not yet applied
     ConfigHeight(u16),
+
+    /// A new custom mine count has been entered, but not yet applied
     ConfigMines(u32),
+
+    /// Discard the settings view without aplying any settings
     Discard
 }
 
 enum MainViewContent {
+    /// Show the game (minefield) view
     Game,
+
+    /// Show the settings view
     Settings(GameDifficulty),
+
+    /// Show the Info view
     Info
 }
 
@@ -50,13 +75,19 @@ pub struct Minesweep {
     /// View: a cache of the canvas holding the minefield. A redraw can be forced on it by calling `field_cache.clear()`
     field_cache: Cache,
 
+    /// What the main view of the game is currently showing
     main_view: MainViewContent,
 
+    /// Current state of the game
     game_state: GameState,
     
+    /// Time duration since the beginning of game
     elapsed_seconds: Duration,
+
+    /// Number of flags which still need to be placed by the player
     remaining_flags: i64,
 
+    /// The specifications of the current game (width, height, number of mines)
     game_config: GameConfig,
 }
 
@@ -92,7 +123,7 @@ impl Application for Minesweep {
 
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
         match message {
-            Message::Minesweep { message } => {
+            Message::Minesweep ( message ) => {
                 match message {
                     MinesweepMessage::Step { x, y } => {
                         self.check_ready_to_running();
@@ -288,7 +319,9 @@ impl Application for Minesweep {
             MainViewContent::Settings(game_difficulty) => {
                 self.view_settings(&game_difficulty)
             },
-            MainViewContent::Info => todo!(),
+            MainViewContent::Info => {
+                self.view_info()
+            },
         };
 
         let content = widget::column![
@@ -412,11 +445,12 @@ impl Minesweep {
         (width, height)
     }
 
+    /// Controls view
     fn view_controls(&self) -> Element<Message> {
         let text_color = match self.game_state {
             GameState::Ready => Self::READY_COLOR,
             GameState::Running(_) => Color::WHITE,
-            GameState::Paused(_) => Self::READY_COLOR,
+            GameState::Paused => Self::READY_COLOR,
             GameState::Stopped { is_won } => {
                 match is_won {
                     true => Self::WON_COLOR,
@@ -430,7 +464,7 @@ impl Minesweep {
             GameState::Ready => {
                 widget::text("---").size(time_text_size)
             },
-            GameState::Running(_) | GameState::Paused(_) => {
+            GameState::Running(_) | GameState::Paused => {
                 widget::text(self.elapsed_seconds.as_secs()).size(time_text_size)
             },
             GameState::Stopped { is_won: _ } => {
@@ -460,7 +494,7 @@ impl Minesweep {
 
                 widget::text(self.remaining_flags).size(flags_text_size).style(flags_text_color)
             },
-            GameState::Paused(_) => {
+            GameState::Paused => {
                 widget::text(self.remaining_flags).size(flags_text_size).style(text_color)
             },
             GameState::Stopped { is_won: _} => {
@@ -511,6 +545,7 @@ impl Minesweep {
          .into()
     }
 
+    /// Minefield view
     fn view_field(&self) -> Element<Message> {
         let (field_width, field_height) = self.desired_field_size();
         Canvas::new(self)
@@ -519,6 +554,7 @@ impl Minesweep {
             .into()
     }
 
+    /// Settings view
     fn view_settings(&self, game_difficulty: &GameDifficulty) -> Element<Message> {
         let mut settings_page = widget::column![
             widget::text("Game Difficulty"),
@@ -600,6 +636,11 @@ impl Minesweep {
          .into()
     }
 
+    /// "About" view
+    fn view_info(&self) -> Element<Message> {
+        todo!()
+    }
+
     fn check_ready_to_running(&mut self) {
         if let GameState::Ready = self.game_state {
             self.elapsed_seconds = Duration::default();
@@ -616,13 +657,13 @@ impl Minesweep {
         if let GameState::Running(i) = self.game_state {
             let now = Instant::now();
             self.elapsed_seconds += now - i;
-            self.game_state = GameState::Paused(now)
+            self.game_state = GameState::Paused
         }
     }
 
     /// Resume the game, if it is paused
     fn resume_game(&mut self) {
-        if let GameState::Paused(i) = self.game_state {
+        if let GameState::Paused = self.game_state {
             self.game_state = GameState::Running(Instant::now())
         }
     }
@@ -658,13 +699,13 @@ impl canvas::Program<Message> for Minesweep {
                         mouse::Event::ButtonPressed(mouse_button) => {
                             match mouse_button {
                                 mouse::Button::Left => {
-                                    (event::Status::Captured, Some(Message::Minesweep { message: MinesweepMessage::Step { x, y } }))
+                                    (event::Status::Captured, Some(Message::Minesweep(MinesweepMessage::Step { x, y } )))
                                 },
                                 mouse::Button::Right => {
-                                    (event::Status::Captured, Some(Message::Minesweep { message: MinesweepMessage::Flag { x, y } }))
+                                    (event::Status::Captured, Some(Message::Minesweep(MinesweepMessage::Flag { x, y })))
                                 },
                                 mouse::Button::Middle => {
-                                    (event::Status::Captured, Some(Message::Minesweep { message: MinesweepMessage::AutoStep { x, y } }))
+                                    (event::Status::Captured, Some(Message::Minesweep(MinesweepMessage::AutoStep { x, y })))
                                 },
                                 mouse::Button::Other(_) => {
                                     (event::Status::Ignored, None)
@@ -747,7 +788,7 @@ impl canvas::Program<Message> for Minesweep {
                         draw_rounded_rectangle(rounded_rectangle_radius, Self::HIDDEN_SPOT_COLOR, bounds, frame);
                         
                         let color = match self.game_state {
-                            GameState::Ready | GameState::Running(_) | GameState::Paused(_) => {
+                            GameState::Ready | GameState::Running(_) | GameState::Paused => {
                                 Self::FLAG_COLOR_CORRECT
                             },
                             GameState::Stopped { is_won: _ } => {
@@ -857,8 +898,8 @@ enum GameState {
     /// Game is running
     Running (Instant),
 
-    /// Game s paused at current time
-    Paused(Instant),
+    /// Game is paused
+    Paused,
 
     /// Game is stopped, and was either won (`true`), or lost (`false`)
     Stopped { is_won: bool }
