@@ -1066,9 +1066,11 @@ impl Minesweep {
 
     pub async fn save_persistence(configs: GamePersistence) {
         let path = Self::APP_NAME.to_owned() + ".json";
-        let mut f = std::fs::File::create(path).unwrap();
-        let buf = serde_json::to_vec(&configs).unwrap();
-        let _ = std::io::Write::write_all(&mut f, &buf[..]);
+        if let Ok(mut f) = std::fs::File::create(path) {
+            if let Ok(buf) = serde_json::to_vec(&configs) {
+                let _ = std::io::Write::write_all(&mut f, &buf[..]);
+            }
+        }
     }
 }
 
@@ -1077,7 +1079,7 @@ impl canvas::Program<Message> for Minesweep {
 
     fn update(
         &self,
-        _interaction: &mut (),
+        _interaction: &mut Self::State,
         event: Event,
         bounds: Rectangle,
         cursor: Cursor,
@@ -1132,7 +1134,7 @@ impl canvas::Program<Message> for Minesweep {
 
     fn draw(
         &self,
-        _state: &(),
+        _state: &Self::State,
         _theme: &Theme,
         bounds: iced::Rectangle,
         _cursor: canvas::Cursor,
