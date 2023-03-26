@@ -6,6 +6,7 @@ use iced::{
 };
 use iced_native::{command, window};
 use minefield_rs::{Minefield, StepResult, FlagToggleResult};
+use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -89,7 +90,7 @@ enum MainViewContent {
     /// Show the High Scores view
     HighScores,
 
-    /// Show Record High Score view
+    /// Show Record High Score view `Difficulty Level`, `seconds`, `name`
     EnterHighScore(DifficultyLevel, u64, String),
 }
 
@@ -123,14 +124,22 @@ impl Application for Minesweep {
     type Message = Message;
     type Theme = Theme;
     type Executor = executor::Default;
-    type Flags = ();
+    type Flags = Option<GamePersistence>;
 
-    fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
+    fn new(flags: Self::Flags) -> (Self, Command<Self::Message>) {
         // TODO: load game config if available
-        let game_config = GameDifficulty::EASY;
-        let high_scores = BTreeMap::new();
+        let game_config;
+        let high_scores;
 
-        let mut minesweep = Self {
+        if let Some(gp) = flags {
+            game_config = gp.game_config;
+            high_scores = gp.high_scores;
+        } else {
+            game_config = GameDifficulty::EASY;
+            high_scores = BTreeMap::new();            
+        }
+
+        let minesweep = Self {
             field: Minefield::new(game_config.width, game_config.height).with_mines(game_config.mines),
             field_cache: Cache::default(),
             main_view: MainViewContent::Game,
@@ -141,10 +150,6 @@ impl Application for Minesweep {
             high_scores
         };
         let (width, height) = minesweep.desired_window_size();
-
-        // DEBUG:
-        minesweep.insert_high_score(DifficultyLevel::Easy, 50, "Bo asdfs gdan1".to_string());
-        minesweep.insert_high_score(DifficultyLevel::Easy, 100, "Ban2".to_string());
 
         let command = Command::single(command::Action::Window(window::Action::Resize { width, height }));
 
@@ -872,11 +877,11 @@ impl Minesweep {
          .into()
     }
 
-    fn view_record_high_score(&self, difficulty_level: DifficultyLevel, seconds: u64, name: &String) -> Element<Message> {
+    fn view_record_high_score(&self, difficulty_level: DifficultyLevel, _: u64, name: &String) -> Element<Message> {
         let record_hs_page = widget::column![
             widget::column![
                 widget::text("New HIGH SCORE!").font(Self::TEXT_FONT).size(25.0),
-                widget::text(format!("({} difficulty level)", difficulty_level)).font(Self::TEXT_FONT).size(15.0),
+                widget::text(format!("({} difficulty level)", difficulty_level)).font(Self::TEXT_FONT).size(10.0),
             ].width(Length::Fill)
              .align_items(Alignment::Center),
             
@@ -1253,7 +1258,7 @@ impl Default for GameState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GameConfig {
     pub width: u16,
     pub height: u16,
@@ -1314,7 +1319,7 @@ impl Display for GameDifficulty {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum DifficultyLevel {
     Easy,
     Medium,
@@ -1335,8 +1340,19 @@ impl Display for DifficultyLevel {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Score {
     name: String,
     seconds: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GamePersistence {
+    game_config: GameConfig,
+    high_scores: BTreeMap<DifficultyLevel, Vec<Score>>,
+}
+impl Default for GamePersistence {
+    fn default() -> Self {
+        Self { game_config: Default::default(), high_scores: Default::default() }
+    }
 }
