@@ -1073,11 +1073,11 @@ impl Minesweep {
 }
 
 impl canvas::Program<Message> for Minesweep {
-    type State = Interaction;
+    type State = ();
 
     fn update(
         &self,
-        _interaction: &mut Interaction,
+        _interaction: &mut (),
         event: Event,
         bounds: Rectangle,
         cursor: Cursor,
@@ -1132,7 +1132,7 @@ impl canvas::Program<Message> for Minesweep {
 
     fn draw(
         &self,
-        _state: &Interaction,
+        _state: &(),
         _theme: &Theme,
         bounds: iced::Rectangle,
         _cursor: canvas::Cursor,
@@ -1278,16 +1278,6 @@ impl canvas::Program<Message> for Minesweep {
         }
 
         vec![field]
-    }
-}
-
-pub enum Interaction {
-    None,
-}
-
-impl Default for Interaction {
-    fn default() -> Self {
-        Self::None
     }
 }
 
