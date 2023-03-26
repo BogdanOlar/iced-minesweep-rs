@@ -6,12 +6,11 @@ A rust implementation of the popular game, using the [iced](https://github.com/i
 
 ## TODO
 
-- [ ] Linux
+- [x] Linux / Windows
 - [ ] WASM
-- [ ] WASM touch display
 - [x] Config
 - [x] High scores
-- [ ] Layout
+- [x] Layout
 
 ## Build & run
 
