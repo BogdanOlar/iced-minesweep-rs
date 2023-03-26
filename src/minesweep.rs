@@ -285,8 +285,16 @@ impl Application for Minesweep {
 
                         self.field_cache.clear();
 
-                        let command = Command::single(command::Action::Window(window::Action::Resize { width, height }));
+                        let gp = GamePersistence {
+                            game_config: self.game_config.clone(),
+                            high_scores: self.high_scores.clone(),
+                        };
 
+                        let command = Command::batch(vec![
+                            Command::single(command::Action::Window(window::Action::Resize { width, height })),
+                            Command::perform(Self::save_persistence(gp), |_| Message::Persistance(PersistenceMessage::SavedConfigs))
+                        ]);
+      
                         command
                     },
                     SettingsMessage::Picked(gdif) => {
