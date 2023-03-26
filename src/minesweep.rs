@@ -34,8 +34,13 @@ pub enum Message {
 /// Lower level game logic messages
 #[derive(Debug, Clone)]
 pub enum MinesweepMessage {
+    /// User is stepping on a spot
     Step{x: u16, y: u16},
+
+    /// User is autostepping around a spot
     AutoStep{x: u16, y: u16},
+
+    /// User is toggling a flag on a spot
     Flag{x: u16, y: u16},
 }
 
@@ -125,7 +130,7 @@ impl Application for Minesweep {
         let game_config = GameDifficulty::EASY;
         let high_scores = BTreeMap::new();
 
-        let minesweep = Self {
+        let mut minesweep = Self {
             field: Minefield::new(game_config.width, game_config.height).with_mines(game_config.mines),
             field_cache: Cache::default(),
             main_view: MainViewContent::Game,
@@ -136,6 +141,10 @@ impl Application for Minesweep {
             high_scores
         };
         let (width, height) = minesweep.desired_window_size();
+
+        // DEBUG:
+        minesweep.insert_high_score(DifficultyLevel::Easy, 50, "Bo asdfs gdan1".to_string());
+        minesweep.insert_high_score(DifficultyLevel::Easy, 100, "Ban2".to_string());
 
         let command = Command::single(command::Action::Window(window::Action::Resize { width, height }));
 
@@ -400,6 +409,7 @@ impl Application for Minesweep {
                 self.view_info()
             },
             MainViewContent::HighScores => {
+                // self.view_high_scores().explain(Color::WHITE)
                 self.view_high_scores()
             },
             MainViewContent::EnterHighScore(difficulty_level, seconds, name) => {
@@ -472,7 +482,6 @@ impl Minesweep {
     const SPOT_PAD: f32 = 1.0;
     const CELL_SIZE: f32 = Self::SPOT_SIZE - (Self::SPOT_PAD * 2.0);
     const CELL_PAD: f32 = 8.0;
-
 
     const COLOR_RED: Color = Color::from_rgb(255.0 / 255.0, 0.0 / 255.0, 0.0 / 255.0);
     const COLOR_LIGHT_RED: Color = Color::from_rgb(255.0 / 255.0, 128.0 / 255.0, 128.0 / 255.0);
@@ -763,24 +772,82 @@ impl Minesweep {
 
     /// High Scores view
     fn view_high_scores(&self) -> Element<Message> {
-        let mut content = widget::column![].align_items(Alignment::Start).spacing(10);
-        for (difficulty_level, scores) in &self.high_scores {
+        let mut content = widget::column![].spacing(10).width(Length::Fill).padding(20.0);
+        content = content.push(
+            widget::column![
+                widget::text("High Scores").font(Self::TEXT_FONT).size(25.0)
+            ].width(Length::Fill).align_items(Alignment::Center),
+        );
+
+        for difficulty_level in DifficultyLevel::ALL {
             content = content.push(
-                widget::row![widget::text(difficulty_level.to_string()).font(Self::TEXT_FONT)],
+                widget::horizontal_rule(10.0),
             );
 
-            for score in scores {
-                content = content.push(
-                    widget::row![
-                        widget::text(score.name.as_str()).size(15.0),
-                        widget::text(score.seconds.to_string()).size(15.0),
-                    ].padding(10).spacing(10)
-                );
+            content = content.push(
+                widget::row![widget::text(difficulty_level.to_string()).font(Self::TEXT_FONT)].width(Length::Fill).align_items(Alignment::Center),
+            );
+
+            let empty_scores = Vec::new();
+
+            let scores = if let Some(scores) = self.high_scores.get(difficulty_level) {
+                scores
+            } else {
+                &empty_scores
+            };
+
+            for i in 0..Self::MAX_HIGH_SCORES_PER_LEVEL {
+                if let Some(score) = scores.get(i) {
+                    content = content.push(
+                        widget::row![
+                            widget::column![
+                                widget::text(format!("# {}. ", i + 1)).size(15.0),
+                            ].width(Length::Shrink)
+                                .height(Length::Shrink)
+                                .align_items(Alignment::Start),
+
+                            widget::column![
+                                widget::text(score.name.as_str()).size(15.0)
+                            ].width(Length::Fill)
+                                .height(Length::Shrink)
+                                .align_items(Alignment::Start),
+
+                            widget::column![
+                                widget::text(score.seconds.to_string()).size(15.0)
+                            ].width(Length::Shrink)
+                                .height(Length::Shrink)
+                                .align_items(Alignment::End),
+
+                            widget::horizontal_space(Length::Fill),
+                        ]
+                            .width(Length::Fill)
+                            .spacing(40.0)
+                            .align_items(Alignment::End)
+                    );
+                } else {
+                    content = content.push(
+                        widget::row![
+                            widget::column![
+                                widget::text(format!("# {}. ", i + 1)).size(15.0).style(Self::READY_COLOR),
+                            ].width(Length::Shrink)
+                                .height(Length::Shrink)
+                                .align_items(Alignment::Start),
+
+                            widget::column![
+                                widget::text("Empty").size(15.0).style(Self::READY_COLOR),
+                            ].width(Length::Fill)
+                                .height(Length::Shrink)
+                                .align_items(Alignment::Start),
+
+                            widget::horizontal_space(Length::Fill),
+                        ].width(Length::Fill)
+                            .spacing(40.0)
+                            .align_items(Alignment::End),
+                    );
+                }
             }
-
-            content = content.push(widget::row![]);
         }
-
+        
         content = content.push(
             widget::column![
                 widget::row![
@@ -800,20 +867,28 @@ impl Minesweep {
         widget::column![
             widget::scrollable(container(content).width(Length::Fill)),
         ]
+         .width(Length::Fill)
          .padding(Self::FIELD_PAD)
          .into()
     }
 
     fn view_record_high_score(&self, difficulty_level: DifficultyLevel, seconds: u64, name: &String) -> Element<Message> {
         let record_hs_page = widget::column![
-            widget::text(difficulty_level.to_string()),
+            widget::column![
+                widget::text("New HIGH SCORE!").font(Self::TEXT_FONT).size(25.0),
+                widget::text(format!("({} difficulty level)", difficulty_level)).font(Self::TEXT_FONT).size(15.0),
+            ].width(Length::Fill)
+             .align_items(Alignment::Center),
+            
             widget::row![
-                widget::text_input("Enter your name", &name, move |s| {
+                widget::text_input("Please enter your name", &name, move |s| {
                     Message::HighScore(RecordHighScore::NameChanged(s))
                 }).on_submit(Message::HighScore(RecordHighScore::RecordName))
             ]
              .spacing(10.0)
-        ].spacing(10.0);
+        ].spacing(10.0)
+         .width(Length::Fill)
+         .padding(20.0);
 
         widget::column![
             record_hs_page
@@ -1244,6 +1319,10 @@ pub enum DifficultyLevel {
     Easy,
     Medium,
     Hard
+}
+
+impl DifficultyLevel {
+    pub const ALL: &[DifficultyLevel] = &[Self::Easy, Self::Medium, Self::Hard];
 }
 
 impl Display for DifficultyLevel {
