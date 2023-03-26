@@ -10,7 +10,7 @@ A rust implementation of the popular game, using the [iced](https://github.com/i
 - [ ] WASM
 - [ ] WASM touch display
 - [x] Config
-- [ ] High scores
+- [x] High scores
 - [ ] Layout
 
 ## Build & run
