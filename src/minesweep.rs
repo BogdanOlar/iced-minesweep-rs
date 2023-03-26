@@ -28,6 +28,9 @@ pub enum Message {
     /// Messages related to playing the game
     Minesweep(MinesweepMessage),
 
+    /// Load/Save game configs
+    Persistance(PersistenceMessage),
+
     /// Message which informs us that a second has passed
     Tick(Instant),
 }
@@ -77,6 +80,13 @@ pub enum RecordHighScore {
 }
 
 #[derive(Debug, Clone)]
+pub enum PersistenceMessage {
+    LoadedConfigs(Option<GamePersistence>),
+    SavedConfigs,
+}
+
+
+#[derive(Debug, Clone)]
 enum MainViewContent {
     /// Show the game (minefield) view
     Game,
@@ -124,20 +134,11 @@ impl Application for Minesweep {
     type Message = Message;
     type Theme = Theme;
     type Executor = executor::Default;
-    type Flags = Option<GamePersistence>;
+    type Flags = ();
 
-    fn new(flags: Self::Flags) -> (Self, Command<Self::Message>) {
-        // TODO: load game config if available
-        let game_config;
-        let high_scores;
-
-        if let Some(gp) = flags {
-            game_config = gp.game_config;
-            high_scores = gp.high_scores;
-        } else {
-            game_config = GameDifficulty::EASY;
-            high_scores = BTreeMap::new();            
-        }
+    fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
+        let game_config= GameDifficulty::EASY;
+        let high_scores = BTreeMap::new();
 
         let minesweep = Self {
             field: Minefield::new(game_config.width, game_config.height).with_mines(game_config.mines),
@@ -151,7 +152,10 @@ impl Application for Minesweep {
         };
         let (width, height) = minesweep.desired_window_size();
 
-        let command = Command::single(command::Action::Window(window::Action::Resize { width, height }));
+        let command = Command::batch(vec![
+            Command::single(command::Action::Window(window::Action::Resize { width, height })),
+            Command::perform(Self::load_persistence(), |x| Message::Persistance(PersistenceMessage::LoadedConfigs(x))),
+        ]);
 
         (minesweep, command)
     }
@@ -383,18 +387,43 @@ impl Application for Minesweep {
                                 self.main_view = MainViewContent::EnterHighScore(d, s, old_name);
                             }
                         }
+
+                        Command::none()
                     },
                     RecordHighScore::RecordName => {
                         if let MainViewContent::EnterHighScore(difficulty_level, seconds, name) = self.main_view.clone() {
                             self.main_view = MainViewContent::HighScores;
                             self.insert_high_score(difficulty_level, seconds, name);
+
+                            let gp = GamePersistence {
+                                game_config: self.game_config.clone(),
+                                high_scores: self.high_scores.clone(),
+                            };
+
+                            Command::perform(Self::save_persistence(gp), |_| Message::Persistance(PersistenceMessage::SavedConfigs))
+                        } else {
+                            Command::none()
                         }
                     },
                     RecordHighScore::Discard => {
                         if let MainViewContent::EnterHighScore(_, _, _) = self.main_view {
                             self.main_view = MainViewContent::Game;
                         }
+
+                        Command::none()
                     },
+                }
+            },
+            Message::Persistance(pmsg) => {
+                match pmsg {
+                    PersistenceMessage::LoadedConfigs(game_p) => {
+                        if let Some(game_p) = game_p {
+                            self.high_scores = game_p.high_scores;
+                            // TODO: Maybe load the game configs as well if they are not custom
+                            // FIXME: wrong custom configs can crash the game or make it unusable
+                        }
+                    },
+                    PersistenceMessage::SavedConfigs => {},
                 }
 
                 Command::none()
@@ -1013,8 +1042,26 @@ impl Minesweep {
         }
     }
 
+    pub async fn load_persistence() -> Option<GamePersistence> {
+        let path = Self::APP_NAME.to_owned() + ".json";
+        if let Ok(mut file) = std::fs::File::open(path) {
+            let mut buf = vec![];
+            if std::io::Read::read_to_end(&mut file, &mut buf).is_ok() {
+                if let Ok(world) = serde_json::from_slice(&buf[..]) {
+                    return Some(world);
+                }
+            }
+        }
+    
+        None
+    }
 
-
+    pub async fn save_persistence(configs: GamePersistence) {
+        let path = Self::APP_NAME.to_owned() + ".json";
+        let mut f = std::fs::File::create(path).unwrap();
+        let buf = serde_json::to_vec(&configs).unwrap();
+        let _ = std::io::Write::write_all(&mut f, &buf[..]);
+    }
 }
 
 impl canvas::Program<Message> for Minesweep {
