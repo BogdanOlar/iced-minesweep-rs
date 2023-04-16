@@ -730,35 +730,38 @@ impl Minesweep {
                 widget::text("Custom Game"),
                 widget::row![
                     widget::text("Width:"),
-                    widget::text_input("", game_config.width.to_string().as_str(), move |s| {
-                        if let Ok(i) = s.parse::<u16>() {
-                            Message::Settings(SettingsMessage::ConfigWidth(i))
-                        } else {
-                            Message::Settings(SettingsMessage::ConfigWidth(width))
-                        }
-                    })
+                    widget::text_input("", game_config.width.to_string().as_str())
+                        .on_input(move |s| {
+                            if let Ok(i) = s.parse::<u16>() {
+                                Message::Settings(SettingsMessage::ConfigWidth(i))
+                            } else {
+                                Message::Settings(SettingsMessage::ConfigWidth(width))
+                            }
+                        })
                 ]
                  .spacing(10.0),
                 widget::row![
                     widget::text("Height:"),
-                    widget::text_input("", game_config.height.to_string().as_str(), move |s| {
-                        if let Ok(i) = s.parse::<u16>() {
-                            Message::Settings(SettingsMessage::ConfigHeight(i))
-                        } else {
-                            Message::Settings(SettingsMessage::ConfigHeight(height))
-                        }
-                    })
+                    widget::text_input("", game_config.height.to_string().as_str())
+                        .on_input(move |s| {
+                            if let Ok(i) = s.parse::<u16>() {
+                                Message::Settings(SettingsMessage::ConfigHeight(i))
+                            } else {
+                                Message::Settings(SettingsMessage::ConfigHeight(height))
+                            }
+                        })
                 ]
                  .spacing(10.0),
                 widget::row![
                     widget::text("Mines:"),
-                    widget::text_input("", game_config.mines.to_string().as_str(), move |s| {
-                        if let Ok(i) = s.parse::<u32>() {
-                            Message::Settings(SettingsMessage::ConfigMines(i))
-                        } else {
-                            Message::Settings(SettingsMessage::ConfigMines(mines))
-                        }
-                    })
+                    widget::text_input("", game_config.mines.to_string().as_str())
+                        .on_input(move |s| {
+                            if let Ok(i) = s.parse::<u32>() {
+                                Message::Settings(SettingsMessage::ConfigMines(i))
+                            } else {
+                                Message::Settings(SettingsMessage::ConfigMines(mines))
+                            }
+                        })
                 ]
                  .spacing(10.0),
             ].spacing(10.0);
@@ -941,9 +944,11 @@ impl Minesweep {
              .align_items(Alignment::Center),
             
             widget::row![
-                widget::text_input("Please enter your name", name, move |s| {
-                    Message::HighScore(RecordHighScore::NameChanged(s))
-                }).on_submit(Message::HighScore(RecordHighScore::RecordName))
+                widget::text_input("Please enter your name", name)
+                    .on_input(move |s| {
+                        Message::HighScore(RecordHighScore::NameChanged(s))
+                    })
+                    .on_submit(Message::HighScore(RecordHighScore::RecordName))
             ]
              .spacing(10.0)
         ].spacing(10.0)
