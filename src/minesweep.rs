@@ -273,7 +273,7 @@ impl Application for Minesweep {
                         }
                     },
                     SettingsMessage::Set(game_difficulty) => {
-                        self.game_config = game_difficulty.to_config();
+                        self.game_config = game_difficulty.into();
 
                         self.field = Minefield::new(self.game_config.width, self.game_config.height).with_mines(self.game_config.mines);
                         self.game_state = GameState::Ready;
@@ -286,7 +286,7 @@ impl Application for Minesweep {
                         self.field_cache.clear();
 
                         let gp = GamePersistence {
-                            game_config: self.game_config.clone(),
+                            game_config: self.game_config,
                             high_scores: self.high_scores.clone(),
                         };
 
@@ -316,44 +316,39 @@ impl Application for Minesweep {
                         }
                     },
                     SettingsMessage::ConfigWidth(width) => {
-                        if let MainViewContent::Settings(game_difficulty) = self.main_view {
-                            if let GameDifficulty::Custom(game_config) = game_difficulty {
-                                self.main_view = MainViewContent::Settings(GameDifficulty::Custom(
-                                    GameConfig {
-                                        width,
-                                        height: game_config.height,
-                                        mines: game_config.mines
-                                    }
-                                ))
-                            }
+                        if let MainViewContent::Settings(GameDifficulty::Custom(game_config)) = self.main_view {
+                            self.main_view = MainViewContent::Settings(GameDifficulty::Custom(
+                                GameConfig {
+                                    width,
+                                    height: game_config.height,
+                                    mines: game_config.mines
+                                }
+                            ))
+                            
                         }
                         Command::none()
                     },
                     SettingsMessage::ConfigHeight(height) => {
-                        if let MainViewContent::Settings(game_difficulty) = self.main_view {
-                            if let GameDifficulty::Custom(game_config) = game_difficulty {
-                                self.main_view = MainViewContent::Settings(GameDifficulty::Custom(
-                                    GameConfig {
-                                        width: game_config.width,
-                                        height,
-                                        mines: game_config.mines
-                                    }
-                                ))
-                            }
+                        if let MainViewContent::Settings(GameDifficulty::Custom(game_config)) = self.main_view {
+                            self.main_view = MainViewContent::Settings(GameDifficulty::Custom(
+                                GameConfig {
+                                    width: game_config.width,
+                                    height,
+                                    mines: game_config.mines
+                                }
+                            ))
                         }
                         Command::none()
                     },
                     SettingsMessage::ConfigMines(mines) => {
-                        if let MainViewContent::Settings(game_difficulty) = self.main_view {
-                            if let GameDifficulty::Custom(game_config) = game_difficulty {
-                                self.main_view = MainViewContent::Settings(GameDifficulty::Custom(
-                                    GameConfig {
-                                        width: game_config.width,
-                                        height: game_config.height,
-                                        mines,
-                                    }
-                                ))
-                            }
+                        if let MainViewContent::Settings(GameDifficulty::Custom(game_config)) = self.main_view {
+                            self.main_view = MainViewContent::Settings(GameDifficulty::Custom(
+                                GameConfig {
+                                    width: game_config.width,
+                                    height: game_config.height,
+                                    mines,
+                                }
+                            ))
                         }
                         Command::none()
                     },
@@ -404,7 +399,7 @@ impl Application for Minesweep {
                             self.insert_high_score(difficulty_level, seconds, name);
 
                             let gp = GamePersistence {
-                                game_config: self.game_config.clone(),
+                                game_config: self.game_config,
                                 high_scores: self.high_scores.clone(),
                             };
 
@@ -423,18 +418,43 @@ impl Application for Minesweep {
                 }
             },
             Message::Persistance(pmsg) => {
+                let command;
+
                 match pmsg {
                     PersistenceMessage::LoadedConfigs(game_p) => {
                         if let Some(game_p) = game_p {
+                            // load High Scores
                             self.high_scores = game_p.high_scores;
-                            // TODO: Maybe load the game configs as well if they are not custom
-                            // FIXME: wrong custom configs can crash the game or make it unusable
+
+                            // Load game config, if it's not custom
+                            let game_difficulty = GameDifficulty::from_config(&game_p.game_config);
+                            
+                            match game_difficulty {
+                                GameDifficulty::Easy | GameDifficulty::Medium | GameDifficulty::Hard => {
+                                    
+                                    // Apply the game config loaded from file
+                                    // TODO: Find a better way of generating a message and adding it to the event queue
+                                    async fn a(gd: GameDifficulty) -> Message {
+                                        Message::Settings(SettingsMessage::Set(gd))
+                                    }
+                                    command = Command::perform(a(game_difficulty), |m| {m})
+                                },
+                                GameDifficulty::Custom(_) => {
+                                    // FIXME: wrong custom configs can crash the game or make it unusable
+                                    command = Command::none();
+                                },
+                            }
+                        } else {
+                            command = Command::none();
                         }
+
                     },
-                    PersistenceMessage::SavedConfigs => {},
+                    PersistenceMessage::SavedConfigs => {
+                        command = Command::none();
+                    },
                 }
 
-                Command::none()
+                command
             },
         }
     }
@@ -445,7 +465,7 @@ impl Application for Minesweep {
                 self.view_field()
             },
             MainViewContent::Settings(game_difficulty) => {
-                self.view_settings(&game_difficulty)
+                self.view_settings(game_difficulty)
             },
             MainViewContent::Info => {
                 self.view_info()
@@ -460,8 +480,6 @@ impl Application for Minesweep {
         };
 
         let content = widget::column![
-            // TODO: remove commented out debug code
-            // self.view_controls().explain(Color::WHITE),
             self.view_controls(),
             main_view
         ]
@@ -524,9 +542,12 @@ impl Minesweep {
     const SPOT_PAD: f32 = 1.0;
     const CELL_SIZE: f32 = Self::SPOT_SIZE - (Self::SPOT_PAD * 2.0);
     const CELL_PAD: f32 = 8.0;
-
+    
+    #[allow(clippy::eq_op)]
     const COLOR_RED: Color = Color::from_rgb(255.0 / 255.0, 0.0 / 255.0, 0.0 / 255.0);
+    #[allow(clippy::eq_op)]
     const COLOR_LIGHT_RED: Color = Color::from_rgb(255.0 / 255.0, 128.0 / 255.0, 128.0 / 255.0);
+    #[allow(clippy::eq_op)]
     const COLOR_GREEN: Color = Color::from_rgb(0.0 / 255.0, 255.0 / 255.0, 0.0 / 255.0);
     const COLOR_GRAY: Color = Color::from_rgb(60.0 / 255.0, 60.0 / 255.0, 60.0 / 255.0);
     const COLOR_DARK_GRAY: Color = Color::from_rgb(27.0 / 255.0, 27.0 / 255.0, 27.0 / 255.0);
@@ -710,7 +731,7 @@ impl Minesweep {
                 widget::row![
                     widget::text("Width:"),
                     widget::text_input("", game_config.width.to_string().as_str(), move |s| {
-                        if let Ok(i) = u16::from_str_radix(&s, 10) {
+                        if let Ok(i) = s.parse::<u16>() {
                             Message::Settings(SettingsMessage::ConfigWidth(i))
                         } else {
                             Message::Settings(SettingsMessage::ConfigWidth(width))
@@ -721,7 +742,7 @@ impl Minesweep {
                 widget::row![
                     widget::text("Height:"),
                     widget::text_input("", game_config.height.to_string().as_str(), move |s| {
-                        if let Ok(i) = u16::from_str_radix(&s, 10) {
+                        if let Ok(i) = s.parse::<u16>() {
                             Message::Settings(SettingsMessage::ConfigHeight(i))
                         } else {
                             Message::Settings(SettingsMessage::ConfigHeight(height))
@@ -732,7 +753,7 @@ impl Minesweep {
                 widget::row![
                     widget::text("Mines:"),
                     widget::text_input("", game_config.mines.to_string().as_str(), move |s| {
-                        if let Ok(i) = u32::from_str_radix(&s, 10) {
+                        if let Ok(i) = s.parse::<u32>() {
                             Message::Settings(SettingsMessage::ConfigMines(i))
                         } else {
                             Message::Settings(SettingsMessage::ConfigMines(mines))
@@ -777,10 +798,7 @@ impl Minesweep {
 
     /// Info/"About" view
     fn view_info(&self) -> Element<Message> {
-        let license_text = match std::str::from_utf8(Self::LICESE_BYTES) {
-            Ok(x) => x,
-            Err(_) => "",
-        };
+        let license_text = std::str::from_utf8(Self::LICESE_BYTES).unwrap_or("");
 
         let content = widget::column![
             widget::row![widget::text("About").font(Self::TEXT_FONT)],
@@ -914,7 +932,7 @@ impl Minesweep {
          .into()
     }
 
-    fn view_record_high_score(&self, difficulty_level: DifficultyLevel, _: u64, name: &String) -> Element<Message> {
+    fn view_record_high_score(&self, difficulty_level: DifficultyLevel, _: u64, name: &str) -> Element<Message> {
         let record_hs_page = widget::column![
             widget::column![
                 widget::text("New HIGH SCORE!").font(Self::TEXT_FONT).size(25.0),
@@ -923,7 +941,7 @@ impl Minesweep {
              .align_items(Alignment::Center),
             
             widget::row![
-                widget::text_input("Please enter your name", &name, move |s| {
+                widget::text_input("Please enter your name", name, move |s| {
                     Message::HighScore(RecordHighScore::NameChanged(s))
                 }).on_submit(Message::HighScore(RecordHighScore::RecordName))
             ]
@@ -1020,7 +1038,7 @@ impl Minesweep {
     }
 
     fn insert_high_score(&mut self, difficulty_level: DifficultyLevel, seconds: u64, name: String) {
-        let name = if name.len() > 0 { name } else { Self::DEFAULT_NAME.to_string() };
+        let name = if name.is_empty() { Self::DEFAULT_NAME.to_string()  } else { name };
         if let Some(scores) = self.high_scores.get_mut(&difficulty_level) {
             scores.push(Score { name, seconds});
 
@@ -1094,8 +1112,8 @@ impl canvas::Program<Message> for Minesweep {
         let origin_rectangle = Rectangle::new(origin_point, Size::new(f_width, f_height));
 
         if let Some(position) =  cursor.position_in(&origin_rectangle) {
-            let x = (position.x / Self::SPOT_SIZE as f32).floor() as u16;
-            let y = (position.y / Self::SPOT_SIZE as f32).floor() as u16;
+            let x = (position.x / Self::SPOT_SIZE).floor() as u16;
+            let y = (position.y / Self::SPOT_SIZE).floor() as u16;
 
             match event {
                 Event::Mouse(mouse_event) => {
@@ -1179,7 +1197,7 @@ impl canvas::Program<Message> for Minesweep {
 
                         if let GameState::Stopped { is_won: _ } = self.game_state {
                             frame.fill_text(Text {
-                                content: format!("{}", Self::MINE_CHAR),
+                                content: Self::MINE_CHAR.to_string(),
                                 position: text.position,
                                 color: Self::MINE_COLOR,
                                 font: Self::MINES_FLAGS_ICONS,
@@ -1201,7 +1219,7 @@ impl canvas::Program<Message> for Minesweep {
                         };
 
                         frame.fill_text(Text {
-                            content: format!("{}", Self::FLAG_CHAR),
+                            content: Self::FLAG_CHAR.to_string(),
                             position: text.position,
                             color,
                             font: Self::MINES_FLAGS_ICONS,
@@ -1213,7 +1231,7 @@ impl canvas::Program<Message> for Minesweep {
                         draw_rounded_rectangle(rounded_rectangle_radius, Self::HIDDEN_SPOT_COLOR, bounds, frame);
 
                         frame.fill_text(Text {
-                            content: format!("{}", Self::FLAG_CHAR),
+                            content: Self::FLAG_CHAR.to_string(),
                             position: text.position,
                             color: Self::FLAG_COLOR_CORRECT,
                             font: Self::MINES_FLAGS_ICONS,
@@ -1225,7 +1243,7 @@ impl canvas::Program<Message> for Minesweep {
                         draw_rounded_rectangle(rounded_rectangle_radius, Self::REVEALED_SPOT_COLOR, bounds, frame);
 
                         frame.fill_text(Text {
-                            content: format!("{}", Self::EMPTY_SPOT_CHARS[neighboring_mines as usize]),
+                            content: Self::EMPTY_SPOT_CHARS[neighboring_mines as usize].to_string(),
                             position: text.position,
                             color: Self::EMPTY_SPOT_COLORS[neighboring_mines as usize],
                             ..text
@@ -1235,7 +1253,7 @@ impl canvas::Program<Message> for Minesweep {
                         draw_rounded_rectangle(rounded_rectangle_radius, Self::REVEALED_SPOT_COLOR, bounds, frame);
 
                         frame.fill_text(Text {
-                            content: format!("{}", Self::MINE_EXPLODED_CHAR),
+                            content: Self::MINE_EXPLODED_CHAR.to_string(),
                             position: text.position,
                             color: Self::MINE_EXPLODED_COLOR,
                             font: Self::MINES_FLAGS_ICONS,
@@ -1312,6 +1330,17 @@ pub struct GameConfig {
     pub mines: u32,
 }
 
+impl From<GameDifficulty> for GameConfig {
+    fn from(val: GameDifficulty) -> Self {
+        match val {
+            GameDifficulty::Easy => GameDifficulty::EASY,
+            GameDifficulty::Medium => GameDifficulty::MEDIUM,
+            GameDifficulty::Hard => GameDifficulty::HARD,
+            GameDifficulty::Custom(gc) => gc,
+        }
+    }
+}
+
 impl Default for GameConfig {
     fn default() -> Self {
         Self { width: 10, height: 10, mines: 10 }
@@ -1344,24 +1373,15 @@ impl GameDifficulty {
             Self::Custom(*config)
         }
     }
-
-    pub fn to_config(&self) -> GameConfig {
-        match self {
-            GameDifficulty::Easy => Self::EASY,
-            GameDifficulty::Medium => Self::MEDIUM,
-            GameDifficulty::Hard => Self::HARD,
-            GameDifficulty::Custom(gc) => *gc,
-        }
-    }
 }
 
 impl Display for GameDifficulty {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            GameDifficulty::Easy => write!(f, "{} (w:{}, h:{}, m:{})", "Easy", Self::EASY.width, Self::EASY.height, Self::EASY.mines),
-            GameDifficulty::Medium =>  write!(f, "{} (w:{}, h:{}, m:{})", "Medium", Self::MEDIUM.width, Self::MEDIUM.height, Self::MEDIUM.mines),
-            GameDifficulty::Hard =>  write!(f, "{} (w:{}, h:{}, m:{})", "Hard", Self::HARD.width, Self::HARD.height, Self::HARD.mines),
-            GameDifficulty::Custom(_) =>  write!(f, "{}", "Custom"),
+            GameDifficulty::Easy => write!(f, "Easy (w:{}, h:{}, m:{})", Self::EASY.width, Self::EASY.height, Self::EASY.mines),
+            GameDifficulty::Medium => write!(f, "Medium (w:{}, h:{}, m:{})", Self::MEDIUM.width, Self::MEDIUM.height, Self::MEDIUM.mines),
+            GameDifficulty::Hard => write!(f, "Hard (w:{}, h:{}, m:{})", Self::HARD.width, Self::HARD.height, Self::HARD.mines),
+            GameDifficulty::Custom(gc) => write!(f, "Custom (w:{}, h:{}, m:{})", gc.width, gc.height, gc.mines),
         }
     }
 }
@@ -1380,9 +1400,9 @@ impl DifficultyLevel {
 impl Display for DifficultyLevel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            DifficultyLevel::Easy => write!(f, "{}", "Easy"),
-            DifficultyLevel::Medium =>  write!(f, "{}", "Medium"),
-            DifficultyLevel::Hard =>  write!(f, "{}", "Hard"),
+            DifficultyLevel::Easy => write!(f, "Easy"),
+            DifficultyLevel::Medium => write!(f, "Medium"),
+            DifficultyLevel::Hard => write!(f, "Hard"),
         }
     }
 }
@@ -1393,13 +1413,8 @@ pub struct Score {
     seconds: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GamePersistence {
     game_config: GameConfig,
     high_scores: BTreeMap<DifficultyLevel, Vec<Score>>,
-}
-impl Default for GamePersistence {
-    fn default() -> Self {
-        Self { game_config: Default::default(), high_scores: Default::default() }
-    }
 }
