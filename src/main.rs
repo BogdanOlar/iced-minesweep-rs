@@ -1,5 +1,5 @@
-use iced::{Settings, Application, window};
-use minesweep::{Minesweep};
+use iced::{window, Application, Settings};
+use minesweep::Minesweep;
 
 extern crate log;
 
