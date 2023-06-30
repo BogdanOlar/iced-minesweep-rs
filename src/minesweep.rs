@@ -309,7 +309,7 @@ impl Application for Minesweep {
                             high_scores: self.high_scores.clone(),
                         };
 
-                        let command = Command::batch(vec![
+                        Command::batch(vec![
                             Command::single(command::Action::Window(window::Action::Resize {
                                 width,
                                 height,
@@ -317,9 +317,7 @@ impl Application for Minesweep {
                             Command::perform(Self::save_persistence(gp), |_| {
                                 Message::Persistance(PersistenceMessage::SavedConfigs)
                             }),
-                        ]);
-
-                        command
+                        ])
                     }
                     SettingsMessage::Picked(gdif) => {
                         self.main_view = MainViewContent::Settings(gdif);

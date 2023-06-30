@@ -16,7 +16,13 @@ A rust implementation of the popular game, using the [iced](https://github.com/i
 
 ### Desktop
 
-Prerequisites: `cargo` and `rustc` (see [installation instructions](https://www.rust-lang.org/tools/install))
+Prerequisites: 
+ - `cargo` and `rustc` (see [installation instructions](https://www.rust-lang.org/tools/install))
+ - Some crates used by `iced` seem to need `cmake`, `g++`, and some font utilities. On Fedora these can be installed with 
+    ```bash
+    sudo dnf group install "C Development Tools and Libraries" "Development Tools"
+    sudo dnf install fontconfig fontconfig-devel
+    ```
 
 Build and run:
 
