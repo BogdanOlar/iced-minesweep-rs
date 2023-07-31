@@ -460,11 +460,12 @@ impl Application for Minesweep {
                                 | GameDifficulty::Medium
                                 | GameDifficulty::Hard => {
                                     // Apply the game config loaded from file
-                                    // TODO: Find a better way of generating a message and adding it to the event queue
-                                    async fn a(gd: GameDifficulty) -> Message {
-                                        Message::Settings(SettingsMessage::Set(gd))
-                                    }
-                                    command = Command::perform(a(game_difficulty), |m| m)
+                                    command = Command::perform(
+                                        async move {
+                                            Message::Settings(SettingsMessage::Set(game_difficulty))
+                                        },
+                                        |m| m,
+                                    )
                                 }
                                 GameDifficulty::Custom(_) => {
                                     // FIXME: wrong custom configs can crash the game or make it unusable
