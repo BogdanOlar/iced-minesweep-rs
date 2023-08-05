@@ -1170,11 +1170,11 @@ impl canvas::Program<Message> for Minesweep {
 
     fn draw(
         &self,
-        state: &Self::State,
+        _state: &Self::State,
         renderer: &Renderer,
-        theme: &Theme,
+        _theme: &Theme,
         bounds: Rectangle,
-        cursor: Cursor,
+        _cursor: Cursor,
     ) -> Vec<canvas::Geometry> {
         let field = self.field_cache.draw(renderer, bounds.size(), |frame| {
             // Set the background
