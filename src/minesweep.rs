@@ -1,14 +1,16 @@
 use iced::{
-    alignment, executor, mouse, theme, time,
+    alignment, executor,
+    mouse::{self, Cursor},
+    theme, time,
     widget::{
         self,
-        canvas::{self, event, stroke, Cache, Cursor, Event, Frame, LineCap, Path, Stroke, Text},
+        canvas::{self, event, stroke, Cache, Event, Frame, LineCap, Path, Stroke, Text},
         container, Canvas,
     },
-    Alignment, Application, Color, Command, Element, Font, Length, Point, Rectangle, Size,
-    Subscription, Theme, Vector,
+    Alignment, Application, Color, Command, Element, Font, Length, Point, Rectangle, Renderer,
+    Size, Subscription, Theme, Vector,
 };
-use iced_native::{command, window};
+use iced_runtime::font;
 use minefield_rs::{FlagToggleResult, Minefield, StepResult};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -42,6 +44,8 @@ pub enum Message {
 
     /// Message which informs us that a second has passed
     Tick(Instant),
+
+    FontLoaded(Result<(), font::Error>),
 }
 
 /// Lower level game logic messages
@@ -162,13 +166,16 @@ impl Application for Minesweep {
         let (width, height) = minesweep.desired_window_size();
 
         let command = Command::batch(vec![
-            Command::single(command::Action::Window(window::Action::Resize {
-                width,
-                height,
-            })),
+            iced_runtime::window::resize(Size { width, height }),
             Command::perform(Self::load_persistence(), |x| {
                 Message::Persistance(PersistenceMessage::LoadedConfigs(x))
             }),
+            iced::font::load(include_bytes!("../res/fonts/emoji-icon-font.ttf").as_slice())
+                .map(Message::FontLoaded),
+            iced::font::load(include_bytes!("../res/fonts/NotoEmoji-Regular.ttf").as_slice())
+                .map(Message::FontLoaded),
+            iced::font::load(include_bytes!("../res/fonts/Ubuntu-Light.ttf").as_slice())
+                .map(Message::FontLoaded),
         ]);
 
         (minesweep, command)
@@ -310,10 +317,7 @@ impl Application for Minesweep {
                         };
 
                         Command::batch(vec![
-                            Command::single(command::Action::Window(window::Action::Resize {
-                                width,
-                                height,
-                            })),
+                            iced_runtime::window::resize(Size { width, height }),
                             Command::perform(Self::save_persistence(gp), |_| {
                                 Message::Persistance(PersistenceMessage::SavedConfigs)
                             }),
@@ -483,6 +487,7 @@ impl Application for Minesweep {
 
                 command
             }
+            Message::FontLoaded(_) => Command::none(),
         }
     }
 
@@ -528,22 +533,13 @@ impl Minesweep {
     const APP_NAME: &str = "iced minesweep-rs";
 
     // Fonts for mines and flags
-    const MINES_FLAGS_ICONS: Font = Font::External {
-        name: "Icons",
-        bytes: include_bytes!("../res/fonts/emoji-icon-font.ttf"),
-    };
+    const MINES_FLAGS_ICONS: Font = Font::with_name("emoji");
 
     // Fonts for mines and flags
-    const COMMANDS_ICONS: Font = Font::External {
-        name: "Commands",
-        bytes: include_bytes!("../res/fonts/NotoEmoji-Regular.ttf"),
-    };
+    const COMMANDS_ICONS: Font = Font::with_name("Noto Emoji");
 
     // Fonts for text
-    const TEXT_FONT: Font = Font::External {
-        name: "UbuntuText",
-        bytes: include_bytes!("../res/fonts/Ubuntu-Light.ttf"),
-    };
+    const TEXT_FONT: Font = Font::with_name("Ubuntu Light");
 
     const LICESE_BYTES: &'static [u8] = include_bytes!("../LICENSE");
 
@@ -1138,7 +1134,7 @@ impl canvas::Program<Message> for Minesweep {
         let origin_point = Point::new(bounds.x + f_o_x, bounds.y + f_o_y);
         let origin_rectangle = Rectangle::new(origin_point, Size::new(f_width, f_height));
 
-        if let Some(position) = cursor.position_in(&origin_rectangle) {
+        if let Some(position) = cursor.position_in(origin_rectangle) {
             let x = (position.x / Self::SPOT_SIZE).floor() as u16;
             let y = (position.y / Self::SPOT_SIZE).floor() as u16;
 
@@ -1174,12 +1170,13 @@ impl canvas::Program<Message> for Minesweep {
 
     fn draw(
         &self,
-        _state: &Self::State,
-        _theme: &Theme,
-        bounds: iced::Rectangle,
-        _cursor: canvas::Cursor,
+        state: &Self::State,
+        renderer: &Renderer,
+        theme: &Theme,
+        bounds: Rectangle,
+        cursor: Cursor,
     ) -> Vec<canvas::Geometry> {
-        let field = self.field_cache.draw(bounds.size(), |frame| {
+        let field = self.field_cache.draw(renderer, bounds.size(), |frame| {
             // Set the background
             let background = Path::rectangle(Point::ORIGIN, frame.size());
             let background_color = Self::REVEALED_SPOT_COLOR;
@@ -1203,7 +1200,7 @@ impl canvas::Program<Message> for Minesweep {
                 let rounded_rectangle_radius = 0.0;
 
                 let text = Text {
-                    size: Self::CELL_SIZE,
+                    size: Self::CELL_SIZE - Self::CELL_PAD,
                     position: bounds.center(),
                     horizontal_alignment: alignment::Horizontal::Center,
                     vertical_alignment: alignment::Vertical::Center,
