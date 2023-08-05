@@ -45,6 +45,7 @@ pub enum Message {
     /// Message which informs us that a second has passed
     Tick(Instant),
 
+    /// User provided fonts have been loaded
     FontLoaded(Result<(), font::Error>),
 }
 
