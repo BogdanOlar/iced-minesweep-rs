@@ -1494,6 +1494,7 @@ impl Default for GameConfig {
     }
 }
 
+/// A description of the game difficulty, with a special entry for custom games
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GameDifficulty {
     Easy,
@@ -1543,19 +1544,6 @@ impl GameDifficulty {
     }
 }
 
-impl TryInto<DifficultyLevel> for GameDifficulty {
-    type Error = ();
-
-    fn try_into(self) -> Result<DifficultyLevel, Self::Error> {
-        match self {
-            GameDifficulty::Easy => Ok(DifficultyLevel::Easy),
-            GameDifficulty::Medium => Ok(DifficultyLevel::Medium),
-            GameDifficulty::Hard => Ok(DifficultyLevel::Hard),
-            GameDifficulty::Custom(_) => Err(()),
-        }
-    }
-}
-
 impl Display for GameDifficulty {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -1589,11 +1577,25 @@ impl Display for GameDifficulty {
     }
 }
 
+/// All standard difficulty levels (i.e. which do not describe a `GameDifficulty::Custom` game)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum DifficultyLevel {
     Easy,
     Medium,
     Hard,
+}
+
+impl TryFrom<GameDifficulty> for DifficultyLevel {
+    type Error = ();
+
+    fn try_from(game_difficulty: GameDifficulty) -> Result<Self, Self::Error> {
+        match game_difficulty {
+            GameDifficulty::Easy => Ok(Self::Easy),
+            GameDifficulty::Medium => Ok(Self::Medium),
+            GameDifficulty::Hard => Ok(Self::Hard),
+            GameDifficulty::Custom(_) => Err(()),
+        }
+    }
 }
 
 impl DifficultyLevel {
@@ -1610,18 +1612,22 @@ impl Display for DifficultyLevel {
     }
 }
 
+/// A description of a high score
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Score {
     name: String,
     seconds: u64,
 }
 
+/// Struct for describing the location of a high score in a BTreeMap of the form `BTreeMap<DifficultyLevel, Vec<Score>>`
+/// , like the one in the `high_scores` member of the `Minesweep` struct
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HighScoreLocation {
     difficulty_level: DifficultyLevel,
     index: usize,
 }
 
+/// A record of the game config and the associated high scores
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GamePersistence {
     game_config: GameConfig,
