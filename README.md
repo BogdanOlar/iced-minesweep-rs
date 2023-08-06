@@ -6,7 +6,8 @@ A rust implementation of the popular game, using the [iced](https://github.com/i
 
 ## TODO
 
-- [x] Linux / Windows
+- [x] Linux
+- [ ] Windows
 - [ ] WASM
 - [x] Config
 - [x] High scores
