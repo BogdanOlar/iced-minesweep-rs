@@ -902,7 +902,6 @@ impl Minesweep {
                                 .width(Length::Shrink)
                                 .height(Length::Shrink)
                                 .align_items(Alignment::End),
-                            // widget::horizontal_space(Length::Fill),
                         ]
                         .width(Length::Fill)
                         .spacing(40.0)
@@ -1160,7 +1159,13 @@ impl Minesweep {
         if let Ok(mut file) = std::fs::File::open(path) {
             let mut buf = vec![];
             if std::io::Read::read_to_end(&mut file, &mut buf).is_ok() {
-                if let Ok(world) = serde_json::from_slice(&buf[..]) {
+                if let Ok(mut world) = serde_json::from_slice::<GamePersistence>(&buf[..]) {
+                    // Do some high scores sanitizing
+                    for scores in &mut world.high_scores.values_mut() {
+                        scores.sort_by(|s1, s2| s1.seconds.cmp(&s2.seconds));
+                        scores.truncate(Self::MAX_HIGH_SCORES_PER_LEVEL);
+                    }
+
                     return Some(world);
                 }
             }
