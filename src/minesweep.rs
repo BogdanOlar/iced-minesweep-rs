@@ -14,15 +14,12 @@ use iced::{
 };
 use iced_runtime::font;
 use minefield_rs::{FlagToggleResult, Minefield, StepResult};
-use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     fmt::Display,
     time::{Duration, Instant},
 };
-
-static HIGH_SCORE_NAME_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -118,8 +115,10 @@ enum MainViewContent {
     /// Show the High Scores view
     HighScores,
 
-    /// Show Record High Score view `Difficulty Level`, `seconds`, `name`
-    EnterHighScore(HighScoreLocation),
+    /// Show Enter High Score view, with `HighScoreLocation` showing which entry in `high_scores` contains the
+    /// preliminary name to be recorded as high score for a particular `DifficultyLevel`, and the `Id` of a `text_input`
+    /// which takes the focus when the `Enter High Score` view is shown
+    EnterHighScore(HighScoreLocation, text_input::Id),
 }
 
 pub struct Minesweep {
@@ -252,8 +251,10 @@ impl Application for Minesweep {
 
                 self.field_cache.clear();
 
-                if let MainViewContent::EnterHighScore(_) = &self.main_view {
-                    text_input::focus(HIGH_SCORE_NAME_INPUT_ID.clone())
+                // If the `Enter High Score` is about to be shown, make sure to focus the text input for the `name`,
+                // so that the user does not have to do an extra click to enter their name
+                if let MainViewContent::EnterHighScore(_, input_id) = &self.main_view {
+                    text_input::focus(input_id.clone())
                 } else {
                     Command::none()
                 }
@@ -417,7 +418,7 @@ impl Application for Minesweep {
             Message::HighScore(rec) => {
                 match rec {
                     RecordHighScore::NameChanged(name) => {
-                        if let MainViewContent::EnterHighScore(hs) = self.main_view.clone() {
+                        if let MainViewContent::EnterHighScore(hs, _) = self.main_view.clone() {
                             // Enforce maximum name length
                             if name.chars().count() < Self::MAX_HIGHSCORE_NAME_LEN {
                                 if let Some(scores) = self.high_scores.get_mut(&hs.difficulty_level)
@@ -432,7 +433,7 @@ impl Application for Minesweep {
                         Command::none()
                     }
                     RecordHighScore::RecordName => {
-                        if let MainViewContent::EnterHighScore(_hs) = self.main_view.clone() {
+                        if let MainViewContent::EnterHighScore(_hs, _) = self.main_view.clone() {
                             self.main_view = MainViewContent::HighScores;
 
                             let gp = GamePersistence {
@@ -448,7 +449,7 @@ impl Application for Minesweep {
                         }
                     }
                     RecordHighScore::Discard => {
-                        if let MainViewContent::EnterHighScore(hs) = &self.main_view {
+                        if let MainViewContent::EnterHighScore(hs, _) = &self.main_view {
                             if let Some(scores) = self.high_scores.get_mut(&hs.difficulty_level) {
                                 if hs.index < scores.len() {
                                     scores.remove(hs.index);
@@ -515,7 +516,9 @@ impl Application for Minesweep {
                 // self.view_high_scores().explain(Color::WHITE)
                 self.view_high_scores()
             }
-            MainViewContent::EnterHighScore(hs) => self.view_record_high_score(hs.clone()),
+            MainViewContent::EnterHighScore(hs, name_input_id) => {
+                self.view_record_high_score(hs.clone(), name_input_id)
+            }
         };
 
         let content = widget::column![self.view_controls(), main_view]
@@ -951,7 +954,11 @@ impl Minesweep {
     }
 
     /// New high score view
-    fn view_record_high_score(&self, hs: HighScoreLocation) -> Element<Message> {
+    fn view_record_high_score(
+        &self,
+        hs: HighScoreLocation,
+        name_input_id: &text_input::Id,
+    ) -> Element<Message> {
         let mut content = widget::column![]
             .spacing(10)
             .width(Length::Fill)
@@ -990,7 +997,7 @@ impl Minesweep {
                     )
                     .on_input(move |s| Message::HighScore(RecordHighScore::NameChanged(s)))
                     .on_submit(Message::HighScore(RecordHighScore::RecordName))
-                    .id(HIGH_SCORE_NAME_INPUT_ID.clone());
+                    .id(name_input_id.clone());
 
                     content = content.push(
                         widget::row![
@@ -1101,10 +1108,13 @@ impl Minesweep {
                         name: String::new(),
                     },
                 ) {
-                    self.main_view = MainViewContent::EnterHighScore(HighScoreLocation {
-                        difficulty_level,
-                        index,
-                    });
+                    self.main_view = MainViewContent::EnterHighScore(
+                        HighScoreLocation {
+                            difficulty_level,
+                            index,
+                        },
+                        text_input::Id::unique(),
+                    );
                 }
             }
         }
