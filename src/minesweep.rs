@@ -950,6 +950,7 @@ impl Minesweep {
             .into()
     }
 
+    /// New high score view
     fn view_record_high_score(&self, hs: HighScoreLocation) -> Element<Message> {
         let mut content = widget::column![]
             .spacing(10)
@@ -1076,6 +1077,7 @@ impl Minesweep {
         .into()
     }
 
+    /// Handle switching game state from `Ready` to `Running`
     fn check_ready_to_running(&mut self) {
         if let GameState::Ready = self.game_state {
             self.elapsed_seconds = Duration::default();
@@ -1083,6 +1085,7 @@ impl Minesweep {
         }
     }
 
+    /// Handle game over
     fn game_over(&mut self, is_won: bool) {
         self.game_state = GameState::Stopped { is_won };
 
@@ -1154,6 +1157,7 @@ impl Minesweep {
         }
     }
 
+    /// Load game config and high scores from file, if it exists
     pub async fn load_persistence() -> Option<GamePersistence> {
         let path = Self::APP_NAME.to_owned() + ".json";
         if let Ok(mut file) = std::fs::File::open(path) {
@@ -1161,7 +1165,7 @@ impl Minesweep {
             if std::io::Read::read_to_end(&mut file, &mut buf).is_ok() {
                 if let Ok(mut world) = serde_json::from_slice::<GamePersistence>(&buf[..]) {
                     // Do some high scores sanitizing
-                    for scores in &mut world.high_scores.values_mut() {
+                    for scores in world.high_scores.values_mut() {
                         scores.sort_by(|s1, s2| s1.seconds.cmp(&s2.seconds));
                         scores.truncate(Self::MAX_HIGH_SCORES_PER_LEVEL);
                     }
@@ -1174,6 +1178,7 @@ impl Minesweep {
         None
     }
 
+    /// Save game config and high scores to file
     pub async fn save_persistence(configs: GamePersistence) {
         let path = Self::APP_NAME.to_owned() + ".json";
         if let Ok(mut f) = std::fs::File::create(path) {
