@@ -13,6 +13,5 @@ iced_runtime = { version = "0.1.1"}
 tokio = { version = "1.29.1", features = ["sync"] }
 log = { version = "0.4.19" }
 env_logger = { version = "0.10.0" }
-# pinning serde (i.e. serde_derive) to v1.0.171 until issue [2538](https://github.com/serde-rs/serde/issues/2538) is resolved
-serde = { version = "=1.0.171", features = ["derive"] }
-serde_json = "1.0.104"
+serde = { version = "1.0.189", features = ["derive"] }
+serde_json = "1.0.107"
