@@ -171,7 +171,7 @@ impl Application for Minesweep {
         let (width, height) = minesweep.desired_window_size();
 
         let command = Command::batch(vec![
-            iced_runtime::window::resize(Size { width, height }),
+            iced_runtime::window::resize(iced::window::Id::MAIN, Size { width, height }),
             Command::perform(Self::load_persistence(), |x| {
                 Message::Persistance(PersistenceMessage::LoadedConfigs(x))
             }),
@@ -329,7 +329,11 @@ impl Application for Minesweep {
                         };
 
                         Command::batch(vec![
-                            iced_runtime::window::resize(Size { width, height }),
+                            // FIXME:
+                            iced_runtime::window::resize(
+                                iced::window::Id::MAIN,
+                                Size { width, height },
+                            ),
                             Command::perform(Self::save_persistence(gp), |_| {
                                 Message::Persistance(PersistenceMessage::SavedConfigs)
                             }),
@@ -507,7 +511,7 @@ impl Application for Minesweep {
         }
     }
 
-    fn view(&self) -> iced::Element<'_, Self::Message, iced::Renderer<Self::Theme>> {
+    fn view(&self) -> iced::Element<'_, Self::Message, Self::Theme> {
         let main_view = match &self.main_view {
             MainViewContent::Game => self.view_field(),
             MainViewContent::Settings(game_difficulty) => self.view_settings(game_difficulty),
@@ -546,7 +550,7 @@ impl Application for Minesweep {
 }
 
 impl Minesweep {
-    const APP_NAME: &str = "iced minesweep-rs";
+    const APP_NAME: &'static str = "iced minesweep-rs";
 
     // Fonts for mines and flags
     const MINES_FLAGS_ICONS: Font = Font::with_name("emoji");
@@ -559,10 +563,10 @@ impl Minesweep {
 
     const LICESE_BYTES: &'static [u8] = include_bytes!("../LICENSE");
 
-    const REFRESH_BTN_CHAR: &str = "🔄";
-    const SETTINGS_BTN_CHAR: &str = "🛠";
-    const ABOUT_BTN_CHAR: &str = "ℹ";
-    const HIGH_SCORES_CHAR: &str = "🏆";
+    const REFRESH_BTN_CHAR: &'static str = "🔄";
+    const SETTINGS_BTN_CHAR: &'static str = "🛠";
+    const ABOUT_BTN_CHAR: &'static str = "ℹ";
+    const HIGH_SCORES_CHAR: &'static str = "🏆";
 
     const TOOLBAR_HEIGHT: f32 = 70.0;
     const FIELD_PAD: f32 = 20.0;
@@ -582,14 +586,14 @@ impl Minesweep {
     const COLOR_GRAY: Color = Color::from_rgb(60.0 / 255.0, 60.0 / 255.0, 60.0 / 255.0);
     const COLOR_DARK_GRAY: Color = Color::from_rgb(27.0 / 255.0, 27.0 / 255.0, 27.0 / 255.0);
 
-    const MINE_CHAR: &str = "☢";
+    const MINE_CHAR: &'static str = "☢";
     const MINE_COLOR: Color = Self::COLOR_RED;
-    const MINE_EXPLODED_CHAR: &str = "💥";
+    const MINE_EXPLODED_CHAR: &'static str = "💥";
     const MINE_EXPLODED_COLOR: Color = Self::COLOR_RED;
-    const FLAG_CHAR: &str = "⚐";
+    const FLAG_CHAR: &'static str = "⚐";
     const FLAG_COLOR_CORRECT: Color = Self::COLOR_GREEN;
     const FLAG_COLOR_WRONG: Color = Self::COLOR_RED;
-    const EMPTY_SPOT_CHARS: [&str; 9] = [" ", "1", "2", "3", "4", "5", "6", "7", "8"];
+    const EMPTY_SPOT_CHARS: [&'static str; 9] = [" ", "1", "2", "3", "4", "5", "6", "7", "8"];
     const EMPTY_SPOT_COLORS: [Color; Self::EMPTY_SPOT_CHARS.len()] = [
         Color::WHITE,
         Color::WHITE,
@@ -623,11 +627,11 @@ impl Minesweep {
         self
     }
 
-    fn desired_window_size(&self) -> (u32, u32) {
+    fn desired_window_size(&self) -> (f32, f32) {
         let (field_width, field_height) = self.desired_field_size();
 
-        let width = field_width as u32;
-        let height = field_height as u32 + Self::TOOLBAR_HEIGHT as u32;
+        let width = field_width;
+        let height = field_height + Self::TOOLBAR_HEIGHT;
 
         (width, height)
     }
@@ -705,10 +709,10 @@ impl Minesweep {
             .width(Length::Shrink)
             .align_items(Alignment::Start),
             widget::row![
-                widget::horizontal_space(Length::Fill),
+                widget::horizontal_space(),
                 display_seconds,
                 display_flags,
-                widget::horizontal_space(Length::Fill)
+                widget::horizontal_space()
             ]
             .spacing(20.0)
             .width(Length::Fill)
@@ -925,7 +929,7 @@ impl Minesweep {
                             .width(Length::Fill)
                             .height(Length::Shrink)
                             .align_items(Alignment::Start),
-                            widget::horizontal_space(Length::Fill),
+                            widget::horizontal_space(),
                         ]
                         .width(Length::Fill)
                         .spacing(40.0)
@@ -1052,7 +1056,7 @@ impl Minesweep {
                             .width(Length::Fill)
                             .height(Length::Shrink)
                             .align_items(Alignment::Start),
-                        widget::horizontal_space(Length::Fill),
+                        widget::horizontal_space(),
                     ]
                     .width(Length::Fill)
                     .spacing(40.0)
@@ -1238,6 +1242,8 @@ impl canvas::Program<Message> for Minesweep {
                             Some(Message::Minesweep(MinesweepMessage::AutoStep { x, y })),
                         ),
                         mouse::Button::Other(_) => (event::Status::Ignored, None),
+                        mouse::Button::Back => (event::Status::Ignored, None),
+                        mouse::Button::Forward => (event::Status::Ignored, None),
                     },
                     _ => (event::Status::Ignored, None),
                 },
@@ -1284,7 +1290,7 @@ impl canvas::Program<Message> for Minesweep {
                 let rounded_rectangle_radius = 0.0;
 
                 let text = Text {
-                    size: Self::CELL_SIZE - Self::CELL_PAD,
+                    size: iced::Pixels(Self::CELL_SIZE - Self::CELL_PAD),
                     position: bounds.center(),
                     horizontal_alignment: alignment::Horizontal::Center,
                     vertical_alignment: alignment::Vertical::Center,
@@ -1316,7 +1322,7 @@ impl canvas::Program<Message> for Minesweep {
                                 position: text.position,
                                 color: Self::MINE_COLOR,
                                 font: Self::MINES_FLAGS_ICONS,
-                                size: Self::CELL_SIZE - Self::CELL_PAD,
+                                size: iced::Pixels(Self::CELL_SIZE - Self::CELL_PAD),
                                 ..text
                             });
                         }
@@ -1343,7 +1349,7 @@ impl canvas::Program<Message> for Minesweep {
                             position: text.position,
                             color,
                             font: Self::MINES_FLAGS_ICONS,
-                            size: Self::CELL_SIZE - Self::CELL_PAD,
+                            size: iced::Pixels(Self::CELL_SIZE - Self::CELL_PAD),
                             ..text
                         });
                     }
@@ -1360,7 +1366,7 @@ impl canvas::Program<Message> for Minesweep {
                             position: text.position,
                             color: Self::FLAG_COLOR_CORRECT,
                             font: Self::MINES_FLAGS_ICONS,
-                            size: Self::CELL_SIZE - Self::CELL_PAD,
+                            size: iced::Pixels(Self::CELL_SIZE - Self::CELL_PAD),
                             ..text
                         });
                     }
@@ -1392,7 +1398,7 @@ impl canvas::Program<Message> for Minesweep {
                             position: text.position,
                             color: Self::MINE_EXPLODED_COLOR,
                             font: Self::MINES_FLAGS_ICONS,
-                            size: Self::CELL_SIZE - Self::CELL_PAD,
+                            size: iced::Pixels(Self::CELL_SIZE - Self::CELL_PAD),
                             ..text
                         });
                     }
@@ -1504,7 +1510,7 @@ pub enum GameDifficulty {
 }
 
 impl GameDifficulty {
-    pub const ALL: &[GameDifficulty] = &[
+    pub const ALL: &'static [GameDifficulty] = &[
         Self::Easy,
         Self::Medium,
         Self::Hard,
@@ -1599,7 +1605,7 @@ impl TryFrom<GameDifficulty> for DifficultyLevel {
 }
 
 impl DifficultyLevel {
-    pub const ALL: &[DifficultyLevel] = &[Self::Easy, Self::Medium, Self::Hard];
+    pub const ALL: &'static [DifficultyLevel] = &[Self::Easy, Self::Medium, Self::Hard];
 }
 
 impl Display for DifficultyLevel {
