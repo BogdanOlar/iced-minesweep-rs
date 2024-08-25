@@ -329,7 +329,6 @@ impl Application for Minesweep {
                         };
 
                         Command::batch(vec![
-                            // FIXME:
                             iced_runtime::window::resize(
                                 iced::window::Id::MAIN,
                                 Size { width, height },
