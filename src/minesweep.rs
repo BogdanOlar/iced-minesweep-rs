@@ -1,18 +1,17 @@
 use iced::{
-    alignment, executor,
+    alignment,
     mouse::{self, Cursor},
-    theme, time,
+    time,
     widget::{
-        self,
+        self, button,
         canvas::{self, event, stroke, Cache, Event, Frame, LineCap, Path, Stroke, Text},
         container,
         text_input::{self},
         Canvas,
     },
-    Alignment, Application, Color, Command, Element, Font, Length, Point, Rectangle, Renderer,
-    Size, Subscription, Theme, Vector,
+    Alignment, Color, Element, Font, Length, Point, Rectangle, Renderer, Size, Subscription, Task,
+    Theme, Vector,
 };
-use iced_runtime::font;
 use minefield_rs::{FlagToggleResult, Minefield, StepResult};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -46,9 +45,6 @@ pub enum Message {
 
     /// Message which informs us that a second has passed
     Tick(Instant),
-
-    /// User provided fonts have been loaded
-    FontLoaded(Result<(), font::Error>),
 }
 
 /// Lower level game logic messages
@@ -145,52 +141,13 @@ pub struct Minesweep {
 
     /// High Scores for each difficulty level
     high_scores: BTreeMap<DifficultyLevel, Vec<Score>>,
+
+    /// Empty high score
+    empty_scores: Vec<Score>,
 }
 
-impl Application for Minesweep {
-    type Message = Message;
-    type Theme = Theme;
-    type Executor = executor::Default;
-    type Flags = ();
-
-    fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
-        let game_config = GameDifficulty::EASY;
-        let high_scores = BTreeMap::new();
-
-        let minesweep = Self {
-            field: Minefield::new(game_config.width, game_config.height)
-                .with_mines(game_config.mines),
-            field_cache: Cache::default(),
-            main_view: MainViewContent::Game,
-            game_state: GameState::default(),
-            game_config,
-            elapsed_seconds: Duration::default(),
-            remaining_flags: game_config.mines as i64,
-            high_scores,
-        };
-        let (width, height) = minesweep.desired_window_size();
-
-        let command = Command::batch(vec![
-            iced_runtime::window::resize(iced::window::Id::MAIN, Size { width, height }),
-            Command::perform(Self::load_persistence(), |x| {
-                Message::Persistance(PersistenceMessage::LoadedConfigs(x))
-            }),
-            iced::font::load(include_bytes!("../res/fonts/emoji-icon-font.ttf").as_slice())
-                .map(Message::FontLoaded),
-            iced::font::load(include_bytes!("../res/fonts/NotoEmoji-Regular.ttf").as_slice())
-                .map(Message::FontLoaded),
-            iced::font::load(include_bytes!("../res/fonts/Ubuntu-Light.ttf").as_slice())
-                .map(Message::FontLoaded),
-        ]);
-
-        (minesweep, command)
-    }
-
-    fn title(&self) -> String {
-        String::from(Self::APP_NAME)
-    }
-
-    fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
+impl Minesweep {
+    pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Minesweep(message) => {
                 match message {
@@ -256,7 +213,7 @@ impl Application for Minesweep {
                 if let MainViewContent::EnterHighScore(_, input_id) = &self.main_view {
                     text_input::focus(input_id.clone())
                 } else {
-                    Command::none()
+                    Task::none()
                 }
             }
             Message::Reset => {
@@ -270,7 +227,7 @@ impl Application for Minesweep {
 
                 self.field_cache.clear();
 
-                Command::none()
+                Task::none()
             }
             Message::Info => {
                 match self.main_view {
@@ -285,7 +242,7 @@ impl Application for Minesweep {
                     }
                 }
 
-                Command::none()
+                Task::none()
             }
             Message::Settings(settings_message) => {
                 match settings_message {
@@ -296,7 +253,7 @@ impl Application for Minesweep {
                                 self.resume_game();
                                 self.main_view = MainViewContent::Game;
 
-                                Command::none()
+                                Task::none()
                             }
                             _ => {
                                 self.pause_game();
@@ -304,7 +261,7 @@ impl Application for Minesweep {
                                     GameDifficulty::from_config(&self.game_config),
                                 );
 
-                                Command::none()
+                                Task::none()
                             }
                         }
                     }
@@ -328,12 +285,13 @@ impl Application for Minesweep {
                             high_scores: self.high_scores.clone(),
                         };
 
-                        Command::batch(vec![
+                        Task::batch(vec![
                             iced_runtime::window::resize(
-                                iced::window::Id::MAIN,
+                                // FIXME: is this right? Where do we get the window id from?
+                                iced::window::Id::unique(),
                                 Size { width, height },
                             ),
-                            Command::perform(Self::save_persistence(gp), |_| {
+                            Task::perform(Self::save_persistence(gp), |_| {
                                 Message::Persistance(PersistenceMessage::SavedConfigs)
                             }),
                         ])
@@ -341,16 +299,16 @@ impl Application for Minesweep {
                     SettingsMessage::Picked(gdif) => {
                         self.main_view = MainViewContent::Settings(gdif);
 
-                        Command::none()
+                        Task::none()
                     }
                     SettingsMessage::Discard => match self.main_view {
                         MainViewContent::Settings(_) => {
                             self.main_view = MainViewContent::Game;
                             self.resume_game();
 
-                            Command::none()
+                            Task::none()
                         }
-                        _ => Command::none(),
+                        _ => Task::none(),
                     },
                     SettingsMessage::ConfigWidth(width) => {
                         if let MainViewContent::Settings(GameDifficulty::Custom(game_config)) =
@@ -363,7 +321,7 @@ impl Application for Minesweep {
                                     mines: game_config.mines,
                                 }))
                         }
-                        Command::none()
+                        Task::none()
                     }
                     SettingsMessage::ConfigHeight(height) => {
                         if let MainViewContent::Settings(GameDifficulty::Custom(game_config)) =
@@ -376,7 +334,7 @@ impl Application for Minesweep {
                                     mines: game_config.mines,
                                 }))
                         }
-                        Command::none()
+                        Task::none()
                     }
                     SettingsMessage::ConfigMines(mines) => {
                         if let MainViewContent::Settings(GameDifficulty::Custom(game_config)) =
@@ -389,7 +347,7 @@ impl Application for Minesweep {
                                     mines,
                                 }))
                         }
-                        Command::none()
+                        Task::none()
                     }
                 }
             }
@@ -407,7 +365,7 @@ impl Application for Minesweep {
                     }
                 }
 
-                Command::none()
+                Task::none()
             }
 
             Message::Tick(new_tick) => {
@@ -416,7 +374,7 @@ impl Application for Minesweep {
                     *cur_tick = new_tick;
                 }
 
-                Command::none()
+                Task::none()
             }
             Message::HighScore(rec) => {
                 match rec {
@@ -433,7 +391,7 @@ impl Application for Minesweep {
                             }
                         }
 
-                        Command::none()
+                        Task::none()
                     }
                     RecordHighScore::RecordName => {
                         if let MainViewContent::EnterHighScore(_hs, _) = self.main_view.clone() {
@@ -444,11 +402,11 @@ impl Application for Minesweep {
                                 high_scores: self.high_scores.clone(),
                             };
 
-                            Command::perform(Self::save_persistence(gp), |_| {
+                            Task::perform(Self::save_persistence(gp), |_| {
                                 Message::Persistance(PersistenceMessage::SavedConfigs)
                             })
                         } else {
-                            Command::none()
+                            Task::none()
                         }
                     }
                     RecordHighScore::Discard => {
@@ -462,7 +420,7 @@ impl Application for Minesweep {
                             self.main_view = MainViewContent::Game;
                         }
 
-                        Command::none()
+                        Task::none()
                     }
                 }
             }
@@ -483,7 +441,7 @@ impl Application for Minesweep {
                                 | GameDifficulty::Medium
                                 | GameDifficulty::Hard => {
                                     // Apply the game config loaded from file
-                                    command = Command::perform(
+                                    command = Task::perform(
                                         async move {
                                             Message::Settings(SettingsMessage::Set(game_difficulty))
                                         },
@@ -492,25 +450,24 @@ impl Application for Minesweep {
                                 }
                                 GameDifficulty::Custom(_) => {
                                     // FIXME: wrong custom configs can crash the game or make it unusable
-                                    command = Command::none();
+                                    command = Task::none();
                                 }
                             }
                         } else {
-                            command = Command::none();
+                            command = Task::none();
                         }
                     }
                     PersistenceMessage::SavedConfigs => {
-                        command = Command::none();
+                        command = Task::none();
                     }
                 }
 
                 command
             }
-            Message::FontLoaded(_) => Command::none(),
         }
     }
 
-    fn view(&self) -> iced::Element<'_, Self::Message, Self::Theme> {
+    pub fn view(&self) -> iced::Element<'_, Message> {
         let main_view = match &self.main_view {
             MainViewContent::Game => self.view_field(),
             MainViewContent::Settings(game_difficulty) => self.view_settings(game_difficulty),
@@ -527,7 +484,7 @@ impl Application for Minesweep {
         let content = widget::column![self.view_controls(), main_view]
             .width(Length::Fill)
             .height(Length::Fill)
-            .align_items(Alignment::Start);
+            .align_x(Alignment::Start);
 
         widget::container(content)
             .width(Length::Fill)
@@ -535,21 +492,17 @@ impl Application for Minesweep {
             .into()
     }
 
-    fn subscription(&self) -> Subscription<Message> {
+    pub fn subscription(&self) -> Subscription<Message> {
         if let GameState::Running(_) = self.game_state {
             time::every(Duration::from_millis(1000)).map(Message::Tick)
         } else {
             Subscription::none()
         }
     }
-
-    fn theme(&self) -> Theme {
-        Self::Theme::Dark
-    }
 }
 
 impl Minesweep {
-    const APP_NAME: &'static str = "iced minesweep-rs";
+    pub const APP_NAME: &'static str = "iced minesweep-rs";
 
     // Fonts for mines and flags
     const MINES_FLAGS_ICONS: Font = Font::with_name("emoji");
@@ -666,15 +619,15 @@ impl Minesweep {
         };
 
         let display_seconds = widget::column![
-            widget::text("Time").size(10).style(text_color),
-            time_text.style(text_color)
+            widget::text("Time").size(10).color(text_color),
+            time_text.color(text_color)
         ]
-        .align_items(Alignment::Center);
+        .align_x(Alignment::Center);
 
         let flags_text_size = 40;
 
         let flags_text = match self.game_state {
-            GameState::Ready => widget::text("---").size(flags_text_size).style(text_color),
+            GameState::Ready => widget::text("---").size(flags_text_size).color(text_color),
             GameState::Running(_) => {
                 let flags_text_color = if self.remaining_flags >= 0 {
                     Self::FLAG_COUNT_OK_COLOR
@@ -684,18 +637,18 @@ impl Minesweep {
 
                 widget::text(self.remaining_flags)
                     .size(flags_text_size)
-                    .style(flags_text_color)
+                    .color(flags_text_color)
             }
             GameState::Paused => widget::text(self.remaining_flags)
                 .size(flags_text_size)
-                .style(text_color),
+                .color(text_color),
             GameState::Stopped { is_won: _ } => widget::text(self.remaining_flags)
                 .size(flags_text_size)
-                .style(text_color),
+                .color(text_color),
         };
         let display_flags =
-            widget::column![widget::text("Flags").size(10).style(text_color), flags_text]
-                .align_items(Alignment::Center);
+            widget::column![widget::text("Flags").size(10).color(text_color), flags_text]
+                .align_x(Alignment::Center);
 
         widget::row![
             widget::row![widget::button(
@@ -704,9 +657,9 @@ impl Minesweep {
                     .size(20)
             )
             .on_press(Message::Reset)
-            .style(theme::Button::Primary),]
+            .style(button::primary),]
             .width(Length::Shrink)
-            .align_items(Alignment::Start),
+            .align_y(Alignment::Start),
             widget::row![
                 widget::horizontal_space(),
                 display_seconds,
@@ -715,25 +668,25 @@ impl Minesweep {
             ]
             .spacing(20.0)
             .width(Length::Fill)
-            .align_items(Alignment::Center),
+            .align_y(Alignment::Center),
             widget::row![
                 widget::button(widget::text(Self::SETTINGS_BTN_CHAR).font(Self::MINES_FLAGS_ICONS))
                     .on_press(Message::Settings(SettingsMessage::Show))
-                    .style(theme::Button::Primary),
+                    .style(button::primary),
                 widget::button(widget::text(Self::ABOUT_BTN_CHAR).font(Self::COMMANDS_ICONS))
                     .on_press(Message::Info)
-                    .style(theme::Button::Primary),
+                    .style(button::primary),
                 widget::button(widget::text(Self::HIGH_SCORES_CHAR).font(Self::COMMANDS_ICONS))
                     .on_press(Message::HighScores)
-                    .style(theme::Button::Primary),
+                    .style(button::primary),
             ]
             .spacing(10.0)
             .width(Length::Shrink)
-            .align_items(Alignment::End),
+            .align_y(Alignment::End),
         ]
         .padding(10.0)
         .spacing(10.0)
-        .align_items(Alignment::Center)
+        .align_y(Alignment::Center)
         .width(Length::Fill)
         .into()
     }
@@ -814,18 +767,18 @@ impl Minesweep {
             widget::column![widget::row![
                 widget::button("Cancel")
                     .on_press(Message::Settings(SettingsMessage::Discard))
-                    .style(theme::Button::Primary),
+                    .style(button::primary),
                 widget::button("Apply")
                     .on_press(Message::Settings(SettingsMessage::Set(*game_difficulty)))
-                    .style(theme::Button::Primary),
+                    .style(button::primary),
             ]
             .spacing(10.0)
             .width(Length::Shrink)
-            .align_items(Alignment::End)]
+            .align_y(Alignment::End)]
             .width(Length::Fill)
-            .align_items(Alignment::End)
+            .align_x(Alignment::End)
         ]
-        .align_items(Alignment::End)
+        .align_x(Alignment::End)
         .width(Length::Fill)
         .spacing(10.0)
         .padding(Self::FIELD_PAD)
@@ -847,15 +800,15 @@ impl Minesweep {
             widget::row![widget::text(license_text).font(Self::TEXT_FONT).size(12.0)].padding(10),
             widget::column![widget::row![widget::button("Ok")
                 .on_press(Message::Info)
-                .style(theme::Button::Primary),]
+                .style(button::primary),]
             .spacing(10.0)
             .width(Length::Shrink)
-            .align_items(Alignment::End)]
+            .align_y(Alignment::End)]
             .width(Length::Fill)
-            .align_items(Alignment::End)
+            .align_x(Alignment::End)
             .padding(20.0)
         ]
-        .align_items(Alignment::Start)
+        .align_x(Alignment::Start)
         .spacing(10);
 
         widget::column![widget::scrollable(container(content).width(Length::Fill)),]
@@ -872,7 +825,7 @@ impl Minesweep {
         content = content.push(
             widget::column![widget::text("High Scores").font(Self::TEXT_FONT).size(25.0)]
                 .width(Length::Fill)
-                .align_items(Alignment::Center),
+                .align_x(Alignment::Center),
         );
 
         for difficulty_level in DifficultyLevel::ALL {
@@ -881,15 +834,13 @@ impl Minesweep {
             content = content.push(
                 widget::row![widget::text(difficulty_level.to_string()).font(Self::TEXT_FONT)]
                     .width(Length::Fill)
-                    .align_items(Alignment::Center),
+                    .align_y(Alignment::Center),
             );
-
-            let empty_scores = Vec::new();
 
             let scores = if let Some(scores) = self.high_scores.get(difficulty_level) {
                 scores
             } else {
-                &empty_scores
+                &self.empty_scores
             };
 
             for i in 0..Self::MAX_HIGH_SCORES_PER_LEVEL {
@@ -899,40 +850,40 @@ impl Minesweep {
                             widget::column![widget::text(format!("# {}. ", i + 1)).size(15.0),]
                                 .width(Length::Shrink)
                                 .height(Length::Shrink)
-                                .align_items(Alignment::Start),
+                                .align_x(Alignment::Start),
                             widget::column![widget::text(score.name.as_str()).size(15.0)]
                                 .width(Length::Fill)
                                 .height(Length::Shrink)
-                                .align_items(Alignment::Start),
+                                .align_x(Alignment::Start),
                             widget::column![widget::text(score.seconds.to_string()).size(15.0)]
                                 .width(Length::Shrink)
                                 .height(Length::Shrink)
-                                .align_items(Alignment::End),
+                                .align_x(Alignment::End),
                         ]
                         .width(Length::Fill)
                         .spacing(40.0)
-                        .align_items(Alignment::End),
+                        .align_y(Alignment::End),
                     );
                 } else {
                     content = content.push(
                         widget::row![
                             widget::column![widget::text(format!("# {}. ", i + 1))
                                 .size(15.0)
-                                .style(Self::READY_COLOR),]
+                                .color(Self::READY_COLOR),]
                             .width(Length::Shrink)
                             .height(Length::Shrink)
-                            .align_items(Alignment::Start),
+                            .align_x(Alignment::Start),
                             widget::column![widget::text("Empty")
                                 .size(15.0)
-                                .style(Self::READY_COLOR),]
+                                .color(Self::READY_COLOR),]
                             .width(Length::Fill)
                             .height(Length::Shrink)
-                            .align_items(Alignment::Start),
+                            .align_x(Alignment::Start),
                             widget::horizontal_space(),
                         ]
                         .width(Length::Fill)
                         .spacing(40.0)
-                        .align_items(Alignment::End),
+                        .align_y(Alignment::End),
                     );
                 }
             }
@@ -941,12 +892,12 @@ impl Minesweep {
         content = content.push(
             widget::column![widget::row![widget::button("Ok")
                 .on_press(Message::HighScores)
-                .style(theme::Button::Primary),]
+                .style(button::primary),]
             .spacing(10.0)
             .width(Length::Shrink)
-            .align_items(Alignment::End)]
+            .align_y(Alignment::End)]
             .width(Length::Fill)
-            .align_items(Alignment::End)
+            .align_x(Alignment::End)
             .padding(20.0),
         );
 
@@ -972,7 +923,7 @@ impl Minesweep {
                 .font(Self::TEXT_FONT)
                 .size(25.0)]
             .width(Length::Fill)
-            .align_items(Alignment::Center),
+            .align_x(Alignment::Center),
         );
 
         content = content.push(widget::horizontal_rule(10.0));
@@ -980,15 +931,13 @@ impl Minesweep {
         content = content.push(
             widget::row![widget::text(hs.difficulty_level.to_string()).font(Self::TEXT_FONT)]
                 .width(Length::Fill)
-                .align_items(Alignment::Center),
+                .align_y(Alignment::Center),
         );
-
-        let empty_scores = Vec::new();
 
         let scores = if let Some(scores) = self.high_scores.get(&hs.difficulty_level) {
             scores
         } else {
-            &empty_scores
+            &self.empty_scores
         };
 
         for i in 0..Self::MAX_HIGH_SCORES_PER_LEVEL {
@@ -1007,19 +956,19 @@ impl Minesweep {
                             widget::column![widget::text(format!("# {}. ", i + 1)).size(15.0),]
                                 .width(Length::Shrink)
                                 .height(Length::Shrink)
-                                .align_items(Alignment::Start),
+                                .align_x(Alignment::Start),
                             widget::column![widget_name_input]
                                 .width(Length::Fill)
                                 .height(Length::Shrink)
-                                .align_items(Alignment::Start),
+                                .align_x(Alignment::Start),
                             widget::column![widget::text(score.seconds.to_string()).size(15.0)]
                                 .width(Length::Shrink)
                                 .height(Length::Shrink)
-                                .align_items(Alignment::End),
+                                .align_x(Alignment::End),
                         ]
                         .width(Length::Fill)
                         .spacing(40.0)
-                        .align_items(Alignment::End),
+                        .align_y(Alignment::End),
                     );
                 } else {
                     content = content.push(
@@ -1027,19 +976,19 @@ impl Minesweep {
                             widget::column![widget::text(format!("# {}. ", i + 1)).size(15.0),]
                                 .width(Length::Shrink)
                                 .height(Length::Shrink)
-                                .align_items(Alignment::Start),
+                                .align_x(Alignment::Start),
                             widget::column![widget::text(score.name.as_str()).size(15.0)]
                                 .width(Length::Fill)
                                 .height(Length::Shrink)
-                                .align_items(Alignment::Start),
+                                .align_x(Alignment::Start),
                             widget::column![widget::text(score.seconds.to_string()).size(15.0)]
                                 .width(Length::Shrink)
                                 .height(Length::Shrink)
-                                .align_items(Alignment::End),
+                                .align_x(Alignment::End),
                         ]
                         .width(Length::Fill)
                         .spacing(40.0)
-                        .align_items(Alignment::End),
+                        .align_y(Alignment::End),
                     );
                 }
             } else {
@@ -1047,19 +996,19 @@ impl Minesweep {
                     widget::row![
                         widget::column![widget::text(format!("# {}. ", i + 1))
                             .size(15.0)
-                            .style(Self::READY_COLOR),]
+                            .color(Self::READY_COLOR),]
                         .width(Length::Shrink)
                         .height(Length::Shrink)
-                        .align_items(Alignment::Start),
-                        widget::column![widget::text("Empty").size(15.0).style(Self::READY_COLOR),]
+                        .align_x(Alignment::Start),
+                        widget::column![widget::text("Empty").size(15.0).color(Self::READY_COLOR),]
                             .width(Length::Fill)
                             .height(Length::Shrink)
-                            .align_items(Alignment::Start),
+                            .align_x(Alignment::Start),
                         widget::horizontal_space(),
                     ]
                     .width(Length::Fill)
                     .spacing(40.0)
-                    .align_items(Alignment::End),
+                    .align_y(Alignment::End),
                 );
             }
         }
@@ -1069,18 +1018,18 @@ impl Minesweep {
             widget::column![widget::row![
                 widget::button("Cancel")
                     .on_press(Message::HighScore(RecordHighScore::Discard))
-                    .style(theme::Button::Primary),
+                    .style(button::primary),
                 widget::button("Apply")
                     .on_press(Message::HighScore(RecordHighScore::RecordName))
-                    .style(theme::Button::Primary),
+                    .style(button::primary),
             ]
             .spacing(10.0)
             .width(Length::Shrink)
-            .align_items(Alignment::End)]
+            .align_y(Alignment::End)]
             .width(Length::Fill)
-            .align_items(Alignment::End)
+            .align_x(Alignment::End)
         ]
-        .align_items(Alignment::End)
+        .align_x(Alignment::End)
         .width(Length::Fill)
         .spacing(10.0)
         .padding(Self::FIELD_PAD)
@@ -1199,6 +1148,29 @@ impl Minesweep {
                 let _ = std::io::Write::write_all(&mut f, &buf[..]);
             }
         }
+    }
+}
+
+impl Default for Minesweep {
+    fn default() -> Self {
+        let game_config = GameDifficulty::EASY;
+        let high_scores = BTreeMap::new();
+
+        let minesweep = Self {
+            field: Minefield::new(game_config.width, game_config.height)
+                .with_mines(game_config.mines),
+            field_cache: Cache::default(),
+            main_view: MainViewContent::Game,
+            game_state: GameState::default(),
+            game_config,
+            elapsed_seconds: Duration::default(),
+            remaining_flags: game_config.mines as i64,
+            high_scores,
+            empty_scores: Vec::new(),
+        };
+        let (width, height) = minesweep.desired_window_size();
+
+        minesweep
     }
 }
 
