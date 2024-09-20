@@ -9,8 +9,8 @@ use iced::{
         text_input::{self},
         Canvas,
     },
-    Alignment, Color, Element, Font, Length, Point, Rectangle, Renderer, Size, Subscription, Task,
-    Theme, Vector,
+    window, Alignment, Color, Element, Font, Length, Point, Rectangle, Renderer, Size,
+    Subscription, Task, Theme, Vector,
 };
 use minefield_rs::{FlagToggleResult, Minefield, StepResult};
 use serde::{Deserialize, Serialize};
@@ -45,6 +45,8 @@ pub enum Message {
 
     /// Message which informs us that a second has passed
     Tick(Instant),
+
+    WindowId(Option<window::Id>),
 }
 
 /// Lower level game logic messages
@@ -144,12 +146,13 @@ pub struct Minesweep {
 
     /// Empty high score
     empty_scores: Vec<Score>,
+
+    window_id: Option<window::Id>,
 }
 
 impl Minesweep {
     pub fn initialize() -> (Self, Task<Message>) {
         let minesweep = Self::default();
-        let (width, height) = minesweep.desired_window_size();
 
         fn load_persistence() -> Option<GamePersistence> {
             let path = Minesweep::APP_NAME.to_owned() + ".json";
@@ -173,7 +176,10 @@ impl Minesweep {
 
         let message = Message::Persistance(PersistenceMessage::LoadedConfigs(load_persistence()));
 
-        (minesweep, Task::done(message))
+        (
+            minesweep,
+            Task::done(message).chain(window::get_latest().map(Message::WindowId)),
+        )
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -316,8 +322,7 @@ impl Minesweep {
 
                         Task::batch(vec![
                             iced_runtime::window::resize(
-                                // FIXME: is this right? Where do we get the window id from?
-                                iced::window::Id::unique(),
+                                self.window_id.unwrap(),
                                 Size { width, height },
                             ),
                             Task::perform(Self::save_persistence(gp), |_| {
@@ -493,6 +498,11 @@ impl Minesweep {
 
                 command
             }
+            Message::WindowId(id) => {
+                self.window_id = id;
+
+                Task::none()
+            }
         }
     }
 
@@ -634,7 +644,7 @@ impl Minesweep {
             },
         };
 
-        let time_text_size = 40;
+        let time_text_size = 20;
         let time_text = match self.game_state {
             GameState::Ready => widget::text("---").size(time_text_size),
             GameState::Running(_) | GameState::Paused => {
@@ -651,7 +661,7 @@ impl Minesweep {
         ]
         .align_x(Alignment::Center);
 
-        let flags_text_size = 40;
+        let flags_text_size = 20;
 
         let flags_text = match self.game_state {
             GameState::Ready => widget::text("---").size(flags_text_size).color(text_color),
@@ -679,9 +689,7 @@ impl Minesweep {
 
         widget::row![
             widget::row![widget::button(
-                widget::text(Self::REFRESH_BTN_CHAR)
-                    .font(Self::COMMANDS_ICONS)
-                    .size(20)
+                widget::text(Self::REFRESH_BTN_CHAR).font(Self::COMMANDS_ICONS)
             )
             .on_press(Message::Reset)
             .style(button::primary),]
@@ -1146,27 +1154,6 @@ impl Minesweep {
         }
     }
 
-    /// Load game config and high scores from file, if it exists
-    pub async fn load_persistence() -> Option<GamePersistence> {
-        let path = Self::APP_NAME.to_owned() + ".json";
-        if let Ok(mut file) = std::fs::File::open(path) {
-            let mut buf = vec![];
-            if std::io::Read::read_to_end(&mut file, &mut buf).is_ok() {
-                if let Ok(mut world) = serde_json::from_slice::<GamePersistence>(&buf[..]) {
-                    // Do some high scores sanitizing
-                    for scores in world.high_scores.values_mut() {
-                        scores.sort_by(|s1, s2| s1.seconds.cmp(&s2.seconds));
-                        scores.truncate(Self::MAX_HIGH_SCORES_PER_LEVEL);
-                    }
-
-                    return Some(world);
-                }
-            }
-        }
-
-        None
-    }
-
     /// Save game config and high scores to file
     pub async fn save_persistence(configs: GamePersistence) {
         let path = Self::APP_NAME.to_owned() + ".json";
@@ -1194,6 +1181,7 @@ impl Default for Minesweep {
             remaining_flags: game_config.mines as i64,
             high_scores,
             empty_scores: Vec::new(),
+            window_id: None,
         }
     }
 }
