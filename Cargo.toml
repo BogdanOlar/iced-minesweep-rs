@@ -1,12 +1,12 @@
 [package]
 name = "iced-minesweep-rs"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-minefield-rs = { version = "0.1.6" }
+minefield-rs = { version = "0.1.5" }
 iced = { version = "0.13", features = ["canvas", "tokio", "debug"] }
 iced_native = { version = "0.10" }
 iced_runtime = { version = "0.13" }
