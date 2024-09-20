@@ -147,6 +147,35 @@ pub struct Minesweep {
 }
 
 impl Minesweep {
+    pub fn initialize() -> (Self, Task<Message>) {
+        let minesweep = Self::default();
+        let (width, height) = minesweep.desired_window_size();
+
+        fn load_persistence() -> Option<GamePersistence> {
+            let path = Minesweep::APP_NAME.to_owned() + ".json";
+            if let Ok(mut file) = std::fs::File::open(path) {
+                let mut buf = vec![];
+                if std::io::Read::read_to_end(&mut file, &mut buf).is_ok() {
+                    if let Ok(mut world) = serde_json::from_slice::<GamePersistence>(&buf[..]) {
+                        // Do some high scores sanitizing
+                        for scores in world.high_scores.values_mut() {
+                            scores.sort_by(|s1, s2| s1.seconds.cmp(&s2.seconds));
+                            scores.truncate(Minesweep::MAX_HIGH_SCORES_PER_LEVEL);
+                        }
+
+                        return Some(world);
+                    }
+                }
+            }
+
+            None
+        }
+
+        let message = Message::Persistance(PersistenceMessage::LoadedConfigs(load_persistence()));
+
+        (minesweep, Task::done(message))
+    }
+
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Minesweep(message) => {
@@ -499,9 +528,7 @@ impl Minesweep {
             Subscription::none()
         }
     }
-}
 
-impl Minesweep {
     pub const APP_NAME: &'static str = "iced minesweep-rs";
 
     // Fonts for mines and flags
@@ -1156,7 +1183,7 @@ impl Default for Minesweep {
         let game_config = GameDifficulty::EASY;
         let high_scores = BTreeMap::new();
 
-        let minesweep = Self {
+        Self {
             field: Minefield::new(game_config.width, game_config.height)
                 .with_mines(game_config.mines),
             field_cache: Cache::default(),
@@ -1167,10 +1194,7 @@ impl Default for Minesweep {
             remaining_flags: game_config.mines as i64,
             high_scores,
             empty_scores: Vec::new(),
-        };
-        let (width, height) = minesweep.desired_window_size();
-
-        minesweep
+        }
     }
 }
 

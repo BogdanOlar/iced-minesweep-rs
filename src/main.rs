@@ -18,5 +18,5 @@ pub fn main() -> iced::Result {
             resizable: false,
             ..window::Settings::default()
         })
-        .run()
+        .run_with(Minesweep::initialize)
 }
