@@ -46,6 +46,7 @@ pub enum Message {
     /// Message which informs us that a second has passed
     Tick(Instant),
 
+    /// The `window::Id` of the game window
     WindowId(Option<window::Id>),
 }
 
@@ -147,6 +148,7 @@ pub struct Minesweep {
     /// Empty high score
     empty_scores: Vec<Score>,
 
+    /// The `window::Id` of the game window
     window_id: Option<window::Id>,
 }
 
@@ -322,6 +324,7 @@ impl Minesweep {
 
                         Task::batch(vec![
                             iced_runtime::window::resize(
+                                // FIXME: this is unsafe. Check if a `self.window_id` is `Some` first!
                                 self.window_id.unwrap(),
                                 Size { width, height },
                             ),
