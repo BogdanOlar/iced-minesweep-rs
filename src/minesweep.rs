@@ -41,7 +41,7 @@ pub enum Message {
     Minesweep(MinesweepMessage),
 
     /// Load/Save game configs
-    Persistance(PersistenceMessage),
+    Persistence(PersistenceMessage),
 
     /// Message which informs us that a second has passed
     Tick(Instant),
@@ -74,14 +74,8 @@ pub enum SettingsMessage {
     /// A new game difficulty has been picked, but not yet applied
     Picked(GameDifficulty),
 
-    /// A new custom width has been entered, but not yet applied
-    ConfigWidth(u16),
-
-    /// A new custom height has been entered, but not yet applied
-    ConfigHeight(u16),
-
-    /// A new custom mine count has been entered, but not yet applied
-    ConfigMines(u32),
+    /// A new custom game config has been edited, but not yet applied
+    CustomConfig(GameConfig),
 
     /// Discard the settings view without aplying any settings
     Discard,
@@ -155,28 +149,8 @@ pub struct Minesweep {
 impl Minesweep {
     pub fn initialize() -> (Self, Task<Message>) {
         let minesweep = Self::default();
-
-        fn load_persistence() -> Option<GamePersistence> {
-            let path = Minesweep::APP_NAME.to_owned() + ".json";
-            if let Ok(mut file) = std::fs::File::open(path) {
-                let mut buf = vec![];
-                if std::io::Read::read_to_end(&mut file, &mut buf).is_ok() {
-                    if let Ok(mut world) = serde_json::from_slice::<GamePersistence>(&buf[..]) {
-                        // Do some high scores sanitizing
-                        for scores in world.high_scores.values_mut() {
-                            scores.sort_by(|s1, s2| s1.seconds.cmp(&s2.seconds));
-                            scores.truncate(Minesweep::MAX_HIGH_SCORES_PER_LEVEL);
-                        }
-
-                        return Some(world);
-                    }
-                }
-            }
-
-            None
-        }
-
-        let message = Message::Persistance(PersistenceMessage::LoadedConfigs(load_persistence()));
+        let message =
+            Message::Persistence(PersistenceMessage::LoadedConfigs(Self::load_persistence()));
 
         (
             minesweep,
@@ -329,7 +303,7 @@ impl Minesweep {
                                 Size { width, height },
                             ),
                             Task::perform(Self::save_persistence(gp), |_| {
-                                Message::Persistance(PersistenceMessage::SavedConfigs)
+                                Message::Persistence(PersistenceMessage::SavedConfigs)
                             }),
                         ])
                     }
@@ -347,42 +321,14 @@ impl Minesweep {
                         }
                         _ => Task::none(),
                     },
-                    SettingsMessage::ConfigWidth(width) => {
-                        if let MainViewContent::Settings(GameDifficulty::Custom(game_config)) =
-                            self.main_view
+                    SettingsMessage::CustomConfig(new_custom_game_config) => {
+                        if let MainViewContent::Settings(GameDifficulty::Custom(
+                            _cur_custom_game_config,
+                        )) = self.main_view
                         {
-                            self.main_view =
-                                MainViewContent::Settings(GameDifficulty::Custom(GameConfig {
-                                    width,
-                                    height: game_config.height,
-                                    mines: game_config.mines,
-                                }))
-                        }
-                        Task::none()
-                    }
-                    SettingsMessage::ConfigHeight(height) => {
-                        if let MainViewContent::Settings(GameDifficulty::Custom(game_config)) =
-                            self.main_view
-                        {
-                            self.main_view =
-                                MainViewContent::Settings(GameDifficulty::Custom(GameConfig {
-                                    width: game_config.width,
-                                    height,
-                                    mines: game_config.mines,
-                                }))
-                        }
-                        Task::none()
-                    }
-                    SettingsMessage::ConfigMines(mines) => {
-                        if let MainViewContent::Settings(GameDifficulty::Custom(game_config)) =
-                            self.main_view
-                        {
-                            self.main_view =
-                                MainViewContent::Settings(GameDifficulty::Custom(GameConfig {
-                                    width: game_config.width,
-                                    height: game_config.height,
-                                    mines,
-                                }))
+                            self.main_view = MainViewContent::Settings(GameDifficulty::Custom(
+                                new_custom_game_config,
+                            ))
                         }
                         Task::none()
                     }
@@ -440,7 +386,7 @@ impl Minesweep {
                             };
 
                             Task::perform(Self::save_persistence(gp), |_| {
-                                Message::Persistance(PersistenceMessage::SavedConfigs)
+                                Message::Persistence(PersistenceMessage::SavedConfigs)
                             })
                         } else {
                             Task::none()
@@ -461,7 +407,7 @@ impl Minesweep {
                     }
                 }
             }
-            Message::Persistance(pmsg) => {
+            Message::Persistence(pmsg) => {
                 let command;
 
                 match pmsg {
@@ -760,9 +706,17 @@ impl Minesweep {
                     widget::text_input("", game_config.width.to_string().as_str()).on_input(
                         move |s| {
                             if let Ok(i) = s.parse::<u16>() {
-                                Message::Settings(SettingsMessage::ConfigWidth(i))
+                                Message::Settings(SettingsMessage::CustomConfig(GameConfig {
+                                    width: i,
+                                    height,
+                                    mines,
+                                }))
                             } else {
-                                Message::Settings(SettingsMessage::ConfigWidth(width))
+                                Message::Settings(SettingsMessage::CustomConfig(GameConfig {
+                                    width,
+                                    height,
+                                    mines,
+                                }))
                             }
                         }
                     )
@@ -773,9 +727,17 @@ impl Minesweep {
                     widget::text_input("", game_config.height.to_string().as_str()).on_input(
                         move |s| {
                             if let Ok(i) = s.parse::<u16>() {
-                                Message::Settings(SettingsMessage::ConfigHeight(i))
+                                Message::Settings(SettingsMessage::CustomConfig(GameConfig {
+                                    width,
+                                    height: i,
+                                    mines,
+                                }))
                             } else {
-                                Message::Settings(SettingsMessage::ConfigHeight(height))
+                                Message::Settings(SettingsMessage::CustomConfig(GameConfig {
+                                    width,
+                                    height,
+                                    mines,
+                                }))
                             }
                         }
                     )
@@ -786,9 +748,17 @@ impl Minesweep {
                     widget::text_input("", game_config.mines.to_string().as_str()).on_input(
                         move |s| {
                             if let Ok(i) = s.parse::<u32>() {
-                                Message::Settings(SettingsMessage::ConfigMines(i))
+                                Message::Settings(SettingsMessage::CustomConfig(GameConfig {
+                                    width,
+                                    height,
+                                    mines: i,
+                                }))
                             } else {
-                                Message::Settings(SettingsMessage::ConfigMines(mines))
+                                Message::Settings(SettingsMessage::CustomConfig(GameConfig {
+                                    width,
+                                    height,
+                                    mines,
+                                }))
                             }
                         }
                     )
@@ -1155,6 +1125,27 @@ impl Minesweep {
         if let GameState::Paused = self.game_state {
             self.game_state = GameState::Running(Instant::now())
         }
+    }
+
+    /// Load game config and high scores from file
+    fn load_persistence() -> Option<GamePersistence> {
+        let path = Minesweep::APP_NAME.to_owned() + ".json";
+        if let Ok(mut file) = std::fs::File::open(path) {
+            let mut buf = vec![];
+            if std::io::Read::read_to_end(&mut file, &mut buf).is_ok() {
+                if let Ok(mut world) = serde_json::from_slice::<GamePersistence>(&buf[..]) {
+                    // Do some high scores sanitizing
+                    for scores in world.high_scores.values_mut() {
+                        scores.sort_by(|s1, s2| s1.seconds.cmp(&s2.seconds));
+                        scores.truncate(Minesweep::MAX_HIGH_SCORES_PER_LEVEL);
+                    }
+
+                    return Some(world);
+                }
+            }
+        }
+
+        None
     }
 
     /// Save game config and high scores to file
